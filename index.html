@@ -3,386 +3,356 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modelisateur BPMN</title>
+    <title>Assistant de Modélisation BPMN</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
         body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
+            margin: 0;
             padding: 20px;
-            background-color: #f5f5f5;
-        }
-        header {
-            text-align: center;
-            margin-bottom: 20px;
+            background-color: #f5f7fa;
+            color: #333;
         }
         .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .flex-container {
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
         }
-        .tools {
+        .input-section {
             flex: 1;
-            min-width: 250px;
-            background-color: #fff;
-            border-radius: 5px;
-            padding: 15px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            min-width: 300px;
         }
-        .tools h2 {
-            margin-bottom: 15px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
+        .output-section {
+            flex: 1;
+            min-width: 300px;
         }
-        .tool-section {
-            margin-bottom: 20px;
+        textarea {
+            width: 100%;
+            height: 250px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            resize: vertical;
         }
-        .tool-buttons {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 10px;
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
             margin-top: 10px;
         }
-        .tool-button {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background-color: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-            height: 80px;
-        }
-        .tool-button:hover {
-            background-color: #e0e0e0;
-            transform: translateY(-2px);
-        }
-        .tool-icon {
-            font-size: 24px;
-            margin-bottom: 5px;
-            color: #444;
-        }
-        .canvas-container {
-            flex: 3;
-            min-width: 500px;
-            background-color: #fff;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            position: relative;
-            height: 600px;
-            overflow: hidden;
-        }
-        #canvas {
-            width: 100%;
-            height: 100%;
-            background-color: #fff;
-            background-image: 
-                linear-gradient(rgba(200, 200, 200, 0.2) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(200, 200, 200, 0.2) 1px, transparent 1px);
-            background-size: 20px 20px;
-            position: relative;
-            overflow: auto;
+        button:hover {
+            background: #2980b9;
         }
         .instructions {
-            width: 100%;
-            background-color: #fff;
-            border-radius: 5px;
+            background: #f9f9f9;
             padding: 15px;
-            margin-top: 20px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .instructions h2 {
-            margin-bottom: 15px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-        }
-        .symbol {
-            display: inline-block;
-            margin: 0 5px;
-            vertical-align: middle;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 5px;
-            width: 90%;
-            max-width: 500px;
-            max-height: 80vh;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+            margin-top: 10px;
+            max-height: 500px;
             overflow-y: auto;
         }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
+        .reference-section {
+            margin-top: 30px;
         }
-        .close-btn {
-            font-size: 24px;
-            cursor: pointer;
-        }
-        .modal-body label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .modal-body input,
-        .modal-body select {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
+        .bpmn-symbols {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
             margin-top: 15px;
         }
-        .btn {
-            padding: 8px 15px;
-            border: none;
+        .symbol-card {
+            border: 1px solid #ddd;
             border-radius: 4px;
-            cursor: pointer;
-        }
-        .btn-primary {
-            background-color: #007bff;
-            color: white;
-        }
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-        .bpmn-element {
-            position: absolute;
-            background: #fff;
-            border: 1px solid #333;
-            user-select: none;
-            cursor: move;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            padding: 5px;
-        }
-        .bpmn-event {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-        }
-        .bpmn-activity {
-            width: 100px;
-            height: 60px;
-            border-radius: 8px;
+            padding: 10px;
             text-align: center;
+            background: white;
         }
-        .bpmn-gateway {
-            width: 40px;
-            height: 40px;
-            transform: rotate(45deg);
-            background-color: #fff;
+        .symbol-img {
+            height: 50px;
+            margin-bottom: 8px;
         }
-        .bpmn-gateway span {
-            transform: rotate(-45deg);
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        .error {
+            color: #e74c3c;
+            padding: 10px;
+            display: none;
+        }
+        .tab-container {
+            display: flex;
+            margin-top: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #eee;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background: white;
+            border-top: 2px solid #3498db;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+            background: white;
+            border-radius: 0 4px 4px 4px;
+        }
+        .tab-content.active {
             display: block;
         }
-        .start-event {
-            border: 1.5px solid #333;
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
         }
-        .end-event {
-            border: 3px solid #333;
+        table, th, td {
+            border: 1px solid #ddd;
         }
-        .gateway-exclusive::after {
-            content: "X";
-            position: absolute;
-            transform: rotate(-45deg);
-            font-size: 20px;
-            font-weight: bold;
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
         }
-        .connector {
-            position: absolute;
-            background-color: transparent;
-            pointer-events: none;
-        }
-        .connector-line {
-            position: absolute;
-            background-color: #333;
-            height: 2px;
-            transform-origin: 0 0;
-        }
-        .connector-arrow {
-            position: absolute;
-            width: 0;
-            height: 0;
-            border-style: solid;
-            border-width: 6px 0 6px 10px;
-            border-color: transparent transparent transparent #333;
-        }
-        .tool-selected {
-            background-color: #d4edda;
-            border-color: #28a745;
+        th {
+            background-color: #f2f2f2;
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Modélisateur de Processus d'Affaires BPMN</h1>
-    </header>
-    
     <div class="container">
-        <div class="tools">
-            <h2>Outils</h2>
-            
-            <div class="tool-section">
-                <h3>Événements</h3>
-                <div class="tool-buttons">
-                    <div class="tool-button" data-tool="start-event">
-                        <div class="tool-icon">⭘</div>
-                        <span>Début</span>
-                    </div>
-                    <div class="tool-button" data-tool="end-event">
-                        <div class="tool-icon">◉</div>
-                        <span>Fin</span>
-                    </div>
-                    <div class="tool-button" data-tool="intermediate-event">
-                        <div class="tool-icon">⊚</div>
-                        <span>Intermédiaire</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="tool-section">
-                <h3>Activités</h3>
-                <div class="tool-buttons">
-                    <div class="tool-button" data-tool="activity-generic">
-                        <div class="tool-icon">▭</div>
-                        <span>Générique</span>
-                    </div>
-                    <div class="tool-button" data-tool="activity-manual">
-                        <div class="tool-icon">✋▭</div>
-                        <span>Manuelle</span>
-                    </div>
-                    <div class="tool-button" data-tool="activity-user">
-                        <div class="tool-icon">👤▭</div>
-                        <span>Utilisateur</span>
-                    </div>
-                    <div class="tool-button" data-tool="activity-service">
-                        <div class="tool-icon">⚙️▭</div>
-                        <span>Service</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="tool-section">
-                <h3>Passerelles</h3>
-                <div class="tool-buttons">
-                    <div class="tool-button" data-tool="gateway-exclusive">
-                        <div class="tool-icon">◇</div>
-                        <span>Exclusive</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="tool-section">
-                <h3>Flux</h3>
-                <div class="tool-buttons">
-                    <div class="tool-button" data-tool="flow-sequence">
-                        <div class="tool-icon">→</div>
-                        <span>Séquence</span>
-                    </div>
-                    <div class="tool-button" data-tool="flow-message">
-                        <div class="tool-icon">⤑</div>
-                        <span>Message</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="tool-section">
-                <h3>Données</h3>
-                <div class="tool-buttons">
-                    <div class="tool-button" data-tool="data-object">
-                        <div class="tool-icon">📄</div>
-                        <span>Objet</span>
-                    </div>
-                    <div class="tool-button" data-tool="data-store">
-                        <div class="tool-icon">📚</div>
-                        <span>Magasin</span>
-                    </div>
-                </div>
+        <div class="card">
+            <h1>Assistant de Modélisation BPMN</h1>
+            <p>Cet outil vous aide à transformer une description textuelle d'un processus d'affaires en instructions détaillées pour créer un modèle BPMN.</p>
+        </div>
+
+        <div class="flex-container">
+            <div class="input-section card">
+                <h2>Description du Processus</h2>
+                <p>Décrivez votre processus d'affaires en détaillant les acteurs, les activités et le flux d'information.</p>
+                <textarea id="process-description" placeholder="Exemple: Le client appelle le service client pour passer une commande. L'agent du service client vérifie la disponibilité des produits..."></textarea>
+                <button id="analyze-btn">Analyser le Processus</button>
+                <div id="loading" class="loading">Analyse en cours...</div>
+                <div id="error" class="error"></div>
             </div>
 
-            <div class="tool-section">
-                <h3>Contexte</h3>
-                <div class="tool-buttons">
-                    <div class="tool-button" data-tool="pool">
-                        <div class="tool-icon">▬</div>
-                        <span>Piscine</span>
-                    </div>
-                    <div class="tool-button" data-tool="lane">
-                        <div class="tool-icon">▭</div>
-                        <span>Couloir</span>
-                    </div>
+            <div class="output-section card">
+                <h2>Instructions de Modélisation</h2>
+                <div id="modeling-instructions" class="instructions">
+                    Les instructions de modélisation apparaîtront ici après l'analyse de votre description de processus.
                 </div>
             </div>
         </div>
-        
-        <div class="canvas-container">
-            <div id="canvas"></div>
-        </div>
-    </div>
-    
-    <div class="instructions">
-        <h2>Guide BPMN</h2>
-        <p><strong>Formes de base en BPMN</strong></p>
-        <ul>
-            <li><strong>Contexte</strong> - Représente le périmètre du processus et les acteurs impliqués</li>
-            <li><strong>Événements</strong> - Représentent ce qui se passe au début, pendant ou à la fin du processus</li>
-            <li><strong>Activités</strong> - Représentent les tâches à effectuer dans le processus</li>
-            <li><strong>Passerelles</strong> - Représentent les points de décision dans le processus</li>
-            <li><strong>Flux</strong> - Représentent la séquence des activités ou l'échange de messages</li>
-            <li><strong>Données</strong> - Représentent les informations utilisées ou produites par le processus</li>
-        </ul>
-        <p><strong>Règles de base</strong></p>
-        <ul>
-            <li>Chaque processus doit débuter par un événement de début et se terminer par un événement de fin</li>
-            <li>Les flux de séquence ne peuvent pas traverser les frontières des piscines</li>
-            <li>Les flux de message sont utilisés pour la communication entre piscines</li>
-            <li>Les activités doivent avoir au moins un flux entrant et un flux sortant</li>
-        </ul>
-    </div>
 
-    <!-- Modal pour les propriétés -->
-    <div id="propertiesModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Propriétés</h2>
-                <span class="close-btn">&times;</span>
+        <div class="reference-section card">
+            <h2>Référence BPMN</h2>
+            
+            <div class="tab-container">
+                <div class="tab active" data-tab="symbols">Symboles de base</div>
+                <div class="tab" data-tab="events">Événements</div>
+                <div class="tab" data-tab="activities">Activités</div>
+                <div class="tab" data-tab="gateways">Passerelles</div>
+                <div class="tab" data-tab="flows">Flux</div>
+                <div class="tab" data-tab="data">Données</div>
             </div>
-            <div class="modal-body">
-                <!-- Champs dynamiques selon le type d'élément -->
+
+            <div id="symbols" class="tab-content active">
+                <h3>Symboles BPMN de Base</h3>
+                <table>
+                    <tr>
+                        <th>Catégorie</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Contexte</td>
+                        <td>Piscines et couloirs pour représenter les acteurs et les responsabilités</td>
+                    </tr>
+                    <tr>
+                        <td>Événements</td>
+                        <td>Représentent le début, la fin ou un point intermédiaire d'un processus</td>
+                    </tr>
+                    <tr>
+                        <td>Activités</td>
+                        <td>Les tâches ou sous-processus à réaliser</td>
+                    </tr>
+                    <tr>
+                        <td>Passerelles</td>
+                        <td>Points de décision et de convergence dans le processus</td>
+                    </tr>
+                    <tr>
+                        <td>Flux</td>
+                        <td>Connectent les éléments et montrent l'ordre d'exécution</td>
+                    </tr>
+                    <tr>
+                        <td>Données</td>
+                        <td>Objets de données et magasins de données utilisés dans le processus</td>
+                    </tr>
+                </table>
             </div>
-            <div class="modal-footer">
-                <button id="cancelButton" class="btn btn-secondary">Annuler</button>
-                <button id="saveButton" class="btn btn-primary">Enregistrer</button>
+
+            <div id="events" class="tab-content">
+                <h3>Événements BPMN</h3>
+                <table>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Événement de début générique</td>
+                        <td>Marque le début d'un processus</td>
+                    </tr>
+                    <tr>
+                        <td>Événement de fin générique</td>
+                        <td>Marque la fin d'un processus</td>
+                    </tr>
+                    <tr>
+                        <td>Événement de début message</td>
+                        <td>Le processus démarre par une demande d'un acteur externe</td>
+                    </tr>
+                    <tr>
+                        <td>Événement de fin message</td>
+                        <td>Le processus se termine par l'envoi d'un message à un acteur externe</td>
+                    </tr>
+                    <tr>
+                        <td>Événement intermédiaire d'émission message</td>
+                        <td>Envoi d'un message à un acteur externe</td>
+                    </tr>
+                    <tr>
+                        <td>Événement intermédiaire de réception message</td>
+                        <td>Attente d'un message d'un acteur externe pour continuer</td>
+                    </tr>
+                    <tr>
+                        <td>Événement de début minuterie</td>
+                        <td>Le processus démarre à un moment spécifique</td>
+                    </tr>
+                    <tr>
+                        <td>Événement intermédiaire minuterie</td>
+                        <td>Le processus est en pause jusqu'à un moment spécifique</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div id="activities" class="tab-content">
+                <h3>Activités BPMN</h3>
+                <table>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Activité générique</td>
+                        <td>Une tâche générique sans type spécifique</td>
+                    </tr>
+                    <tr>
+                        <td>Activité manuelle</td>
+                        <td>Effectuée par une personne sans l'usage d'un système informatique</td>
+                    </tr>
+                    <tr>
+                        <td>Activité utilisateur</td>
+                        <td>Effectuée par une personne à l'aide d'un système informatique</td>
+                    </tr>
+                    <tr>
+                        <td>Activité service</td>
+                        <td>Effectuée par un système informatique sans intervention humaine</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div id="gateways" class="tab-content">
+                <h3>Passerelles BPMN</h3>
+                <table>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Passerelle exclusive</td>
+                        <td>Un point de décision où une seule sortie est possible (OU exclusif)</td>
+                    </tr>
+                    <tr>
+                        <td>Passerelle exclusive de bifurcation</td>
+                        <td>Dirige le flux vers une seule voie en fonction d'une condition</td>
+                    </tr>
+                    <tr>
+                        <td>Passerelle exclusive de convergence</td>
+                        <td>Rassemble plusieurs flux alternatifs en un seul</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div id="flows" class="tab-content">
+                <h3>Flux BPMN</h3>
+                <table>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Flux de séquence</td>
+                        <td>Montre l'ordre des activités à réaliser</td>
+                    </tr>
+                    <tr>
+                        <td>Flux de message</td>
+                        <td>Montre les échanges d'information entre différentes piscines (acteurs externes)</td>
+                    </tr>
+                    <tr>
+                        <td>Association</td>
+                        <td>Relie des éléments (activités, événements) à des objets de données ou magasins de données</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div id="data" class="tab-content">
+                <h3>Éléments de Données BPMN</h3>
+                <table>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                    <tr>
+                        <td>Objet de données</td>
+                        <td>Information spécifique traitée par une activité (document, formulaire, etc.)</td>
+                    </tr>
+                    <tr>
+                        <td>Magasin de données</td>
+                        <td>Endroit où le processus peut lire et écrire des données persistantes (base de données, classeur, etc.)</td>
+                    </tr>
+                    <tr>
+                        <td>Association - Lecture</td>
+                        <td>L'activité consulte l'information de l'objet ou du magasin de données</td>
+                    </tr>
+                    <tr>
+                        <td>Association - Création</td>
+                        <td>L'activité crée ou écrit dans l'objet ou le magasin de données</td>
+                    </tr>
+                    <tr>
+                        <td>Association - Mise à jour</td>
+                        <td>L'activité modifie l'information existante dans l'objet ou le magasin de données</td>
+                    </tr>
+                </table>
             </div>
         </div>
     </div>
