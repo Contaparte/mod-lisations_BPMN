@@ -33,7 +33,23 @@ function generateInstructions() {
     const sentences = scenarioText.split(/\n|\.|!|\?/).filter(s => s.trim().length > 0);
 
     sentences.forEach((sentence, index) => {
-        instructions.push(`- Étape ${index + 1} : ${sentence.trim()}`);
+        let action = `- Étape ${index + 1} : ${sentence.trim()}`;
+
+        if (index === 0) {
+            action += "\n  👉 Action : Tracez un événement de début (⚪) à la frontière de la piscine représentant l'acteur qui déclenche cette action.";
+        } else if (sentence.toLowerCase().includes("vérifie") || sentence.toLowerCase().includes("contrôle")) {
+            action += "\n  👉 Action : Tracez une activité (▭) dans le couloir approprié représentant cette vérification.";
+        } else if (sentence.toLowerCase().includes("confirme") || sentence.toLowerCase().includes("approuve")) {
+            action += "\n  👉 Action : Tracez une activité (▭) dans le couloir approprié représentant cette confirmation.";
+        } else if (sentence.toLowerCase().includes("envoie") || sentence.toLowerCase().includes("communique")) {
+            action += "\n  👉 Action : Tracez un flux de message (➖) entre les piscines concernées.";
+        } else if (sentence.toLowerCase().includes("commande terminée") || sentence.toLowerCase().includes("processus se termine")) {
+            action += "\n  👉 Action : Tracez un événement de fin (⚫) dans le couloir approprié.";
+        } else {
+            action += "\n  👉 Action : Tracez une activité (▭) dans le couloir approprié pour cette action.";
+        }
+
+        instructions.push(action);
     });
 
     document.getElementById('outputInstructions').innerText = instructions.join('\n\n');
