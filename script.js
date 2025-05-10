@@ -1,37 +1,91 @@
-// Variable globale pour le modeler BPMN
+// Générateur de diagrammes BPMN
+
+// Variables globales
 let bpmnModeler;
+let bpmnJSLoaded = false;
 
-// Attendre que le DOM soit complètement chargé
-document.addEventListener('DOMContentLoaded', function() {
-    // Vérifier que la bibliothèque BPMN-JS est chargée
-    if (typeof BpmnJS === 'undefined') {
-        console.error('BpmnJS n\'est pas défini. Vérifiez l\'importation de la bibliothèque.');
-        alert('La bibliothèque BPMN-JS n\'a pas été chargée correctement. Veuillez rafraîchir la page ou vérifier votre connexion internet.');
-        return;
-    }
+// Fonction pour charger dynamiquement les scripts requis
+function loadScript(url, callback) {
+    console.log(`Chargement de ${url}...`);
+    const script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.src = url;
+    
+    script.onload = function() {
+        console.log(`Script ${url} chargé avec succès`);
+        callback(null, url);
+    };
+    
+    script.onerror = function() {
+        console.error(`Échec du chargement de ${url}`);
+        callback(new Error(`Échec du chargement de ${url}`), url);
+    };
+    
+    document.head.appendChild(script);
+}
 
-    // Initialiser le modeler BPMN
-    try {
-        bpmnModeler = new BpmnJS({
-            container: '#canvas'
+// Chargement des dépendances requises
+function loadDependencies(callback) {
+    // Vérifier si jQuery est déjà chargé
+    if (typeof jQuery === 'undefined') {
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js', function(err) {
+            if (err) return callback(err);
+            loadBpmnJS(callback);
         });
-        console.log('BPMN Modeler initialisé avec succès');
-        
-        // Charger un diagramme vide au démarrage
-        createNewDiagram();
-        
-        // Attacher les gestionnaires d'événements
-        attachEventHandlers();
-    } catch (error) {
-        console.error('Erreur lors de l\'initialisation du modeler BPMN:', error);
-        alert('Erreur lors de l\'initialisation du diagramme. Vérifiez la console pour plus de détails.');
+    } else {
+        loadBpmnJS(callback);
     }
+}
+
+// Chargement spécifique de BPMN-JS
+function loadBpmnJS(callback) {
+    // Vérifier si BpmnJS est déjà chargé
+    if (typeof BpmnJS === 'undefined') {
+        loadScript('https://unpkg.com/bpmn-js@9.4.1/dist/bpmn-modeler.production.min.js', function(err) {
+            if (err) return callback(err);
+            bpmnJSLoaded = true;
+            callback(null);
+        });
+    } else {
+        bpmnJSLoaded = true;
+        callback(null);
+    }
+}
+
+// Initialisation de l'application
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM chargé, initialisation de l\'application...');
+    
+    // Charger les dépendances
+    loadDependencies(function(err) {
+        if (err) {
+            console.error('Erreur lors du chargement des dépendances:', err);
+            alert('Une erreur est survenue lors du chargement des bibliothèques nécessaires. Veuillez rafraîchir la page ou vérifier votre connexion internet.');
+            return;
+        }
+        
+        console.log('Toutes les dépendances sont chargées, initialisation du modeler BPMN...');
+        
+        try {
+            // Initialiser le modeler BPMN
+            bpmnModeler = new BpmnJS({ container: '#canvas' });
+            console.log('BPMN Modeler initialisé avec succès');
+            
+            // Charger un diagramme vide
+            createNewDiagram();
+            
+            // Attacher les gestionnaires d'événements
+            attachEventHandlers();
+        } catch (error) {
+            console.error('Erreur lors de l\'initialisation du modeler BPMN:', error);
+            alert('Erreur lors de l\'initialisation du diagramme. ' + error.message);
+        }
+    });
 });
 
-// Fonction pour attacher tous les gestionnaires d'événements
+// Attacher les gestionnaires d'événements aux boutons
 function attachEventHandlers() {
-    // Définir les mappages bouton-fonction
-    const buttonHandlers = [
+    const buttons = [
         { id: 'analyze-btn', handler: analyzeScenario },
         { id: 'generate-btn', handler: generateDiagram },
         { id: 'reset-btn', handler: resetForm },
@@ -47,80 +101,69 @@ function attachEventHandlers() {
         { id: 'add-gateway-btn', handler: addGateway }
     ];
     
-    // Attacher chaque gestionnaire
-    let attachedCount = 0;
-    buttonHandlers.forEach(button => {
+    buttons.forEach(button => {
         const element = document.getElementById(button.id);
         if (element) {
             element.addEventListener('click', button.handler);
-            attachedCount++;
-            console.log(`Gestionnaire attaché pour le bouton '${button.id}'`);
+            console.log(`Gestionnaire attaché pour ${button.id}`);
         } else {
-            console.error(`Élément avec ID '${button.id}' non trouvé dans le DOM`);
+            console.warn(`Élément avec ID ${button.id} non trouvé`);
         }
     });
     
-    console.log(`${attachedCount} gestionnaires d'événements attachés sur ${buttonHandlers.length} boutons définis`);
-    
     // Attacher les gestionnaires pour les onglets
-    const tabs = document.getElementsByClassName('tab');
-    for (let i = 0; i < tabs.length; i++) {
-        tabs[i].addEventListener('click', function(event) {
-            openTab(event, this.getAttribute('data-tab') || event.target.getAttribute('onclick').match(/'([^']+)'/)[1]);
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function(event) {
+            let tabName;
+            if (this.getAttribute('data-tab')) {
+                tabName = this.getAttribute('data-tab');
+            } else if (this.getAttribute('onclick')) {
+                const match = this.getAttribute('onclick').match(/'([^']+)'/);
+                if (match) tabName = match[1];
+            }
+            
+            if (tabName) {
+                openTab(event, tabName);
+            }
         });
-    }
+    });
+    
+    console.log('Tous les gestionnaires d\'événements ont été attachés');
 }
 
-// Fonctions pour manipuler les onglets
+// Gestion des onglets
 function openTab(evt, tabName) {
-    // Si aucun nom d'onglet n'est fourni, extraire de l'attribut onclick
-    if (!tabName && evt.target.getAttribute('onclick')) {
-        const match = evt.target.getAttribute('onclick').match(/'([^']+)'/);
-        if (match) {
-            tabName = match[1];
-        }
-    }
-    
-    if (!tabName) {
-        console.error('Nom d\'onglet non spécifié');
-        return;
-    }
-
-    console.log(`Ouverture de l'onglet: ${tabName}`);
-    
-    // Masquer tous les contenus d'onglets
     const tabcontent = document.getElementsByClassName("tabcontent");
     for (let i = 0; i < tabcontent.length; i++) {
-        tabcontent[i].classList.remove("show");
         tabcontent[i].style.display = "none";
     }
     
-    // Désactiver tous les boutons d'onglets
     const tablinks = document.getElementsByClassName("tab");
     for (let i = 0; i < tablinks.length; i++) {
         tablinks[i].className = tablinks[i].className.replace(" active", "");
     }
     
-    // Afficher l'onglet courant et activer le bouton
     const currentTab = document.getElementById(tabName);
     if (currentTab) {
         currentTab.style.display = "block";
-        currentTab.classList.add("show");
         evt.currentTarget.className += " active";
         
-        // Si on passe à l'onglet du diagramme, s'assurer que le canvas est correctement redimensionné
         if (tabName === 'diagram-tab' && bpmnModeler) {
             setTimeout(() => {
                 bpmnModeler.get('canvas').zoom('fit-viewport');
-            }, 50);
+            }, 100);
         }
-    } else {
-        console.error(`Onglet avec ID '${tabName}' non trouvé`);
     }
 }
 
 // Créer un nouveau diagramme vide
 function createNewDiagram() {
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
+        return;
+    }
+    
     const diagramXML = `
     <?xml version="1.0" encoding="UTF-8"?>
     <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
@@ -142,23 +185,18 @@ function createNewDiagram() {
     </bpmn:definitions>
     `;
 
-    try {
-        bpmnModeler.importXML(diagramXML, function(err) {
-            if (err) {
-                console.error('Erreur lors du chargement du diagramme vide', err);
-                alert('Erreur lors de la création d\'un nouveau diagramme. Veuillez rafraîchir la page.');
-            } else {
-                console.log('Diagramme vide chargé avec succès');
-            }
-        });
-    } catch (error) {
-        console.error('Exception lors de l\'importation du diagramme:', error);
-    }
+    bpmnModeler.importXML(diagramXML).catch(err => {
+        console.error('Erreur lors du chargement du diagramme vide', err);
+    });
 }
 
 // Analyser le texte de la mise en situation
 function analyzeScenario() {
-    console.log('Analyse du scénario en cours...');
+    if (!bpmnJSLoaded) {
+        alert('Veuillez attendre le chargement complet de la bibliothèque BPMN-JS.');
+        return null;
+    }
+    
     const scenarioText = document.getElementById('scenario').value;
     
     if (!scenarioText) {
@@ -179,27 +217,22 @@ function analyzeScenario() {
     // Afficher les résultats de l'analyse
     document.getElementById('analysis-results').innerText = JSON.stringify(analysis, null, 2);
     
-    console.log('Analyse terminée:', analysis);
-    
     return analysis;
 }
 
-// Extraction des acteurs (personnes, rôles, systèmes)
+// Extraction des acteurs
 function extractActors(text) {
-    console.log('Extraction des acteurs...');
     const actors = [];
-    // Liste des mots clés qui pourraient signaler des acteurs
     const actorKeywords = [
         'client', 'utilisateur', 'agent', 'employé', 'responsable', 'préposé', 
         'gestionnaire', 'superviseur', 'technicien', 'représentant', 'service',
         'département', 'équipe', 'système', 'application', 'logiciel'
     ];
     
-    // Rechercher des acteurs en analysant chaque ligne
     const lines = text.split('\n');
     
     for (const line of lines) {
-        // Chercher les acteurs explicites (marqués par "Le [acteur]", "Un [acteur]", etc.)
+        // Chercher les acteurs explicites
         let matches = line.match(/(?:Le|La|Un|Une|L'|Les|Des)\s+([A-Z][a-zéèêëàâäôöûüùïî]+(?: [a-zéèêëàâäôöûüùïî]+)*)/g);
         if (matches) {
             for (const match of matches) {
@@ -226,16 +259,13 @@ function extractActors(text) {
         }
     }
     
-    console.log(`${actors.length} acteurs extraits`);
     return actors;
 }
 
-// Extraction des activités (verbes d'action)
+// Extraction des activités
 function extractActivities(text) {
-    console.log('Extraction des activités...');
     const activities = [];
     
-    // Liste des verbes d'action couramment utilisés dans les processus
     const actionVerbs = [
         'créer', 'vérifier', 'valider', 'envoyer', 'recevoir', 'traiter', 
         'analyser', 'examiner', 'consulter', 'saisir', 'modifier', 'supprimer',
@@ -244,18 +274,16 @@ function extractActivities(text) {
         'livrer', 'expédier', 'commander', 'planifier', 'organiser', 'contrôler'
     ];
     
-    // Chercher les verbes d'action suivis de compléments
     const lines = text.split(/[.;]/);
     
     for (const line of lines) {
         for (const verb of actionVerbs) {
-            // Différentes formes verbales (infinitif, conjugaisons courantes)
             const verbForms = [
-                verb, // infinitif
-                `${verb}e`, // il/elle verbe
-                `${verb}es`, // tu verbes
-                `${verb}ent`, // ils/elles verbent
-                `${verb}é` // participe passé
+                verb,
+                `${verb}e`,
+                `${verb}es`, 
+                `${verb}ent`,
+                `${verb}é`
             ];
             
             for (const form of verbForms) {
@@ -266,7 +294,6 @@ function extractActivities(text) {
                     for (const match of matches) {
                         const activity = match.trim().toLowerCase();
                         
-                        // Exclure les matches trop courts ou répétés
                         if (activity.length > 5 && !activities.some(a => activity.includes(a) || a.includes(activity))) {
                             activities.push(activity);
                         }
@@ -276,16 +303,13 @@ function extractActivities(text) {
         }
     }
     
-    console.log(`${activities.length} activités extraites`);
     return activities;
 }
 
-// Extraction des décisions (conditions, questions)
+// Extraction des décisions
 function extractDecisions(text) {
-    console.log('Extraction des décisions...');
     const decisions = [];
     
-    // Rechercher les structures de décision (Si..., Est-ce que..., Vérifier si...)
     const conditionPatterns = [
         /si\s+([^,.?!]+)/gi,
         /est-ce\s+que\s+([^,.?!]+)/gi,
@@ -302,30 +326,25 @@ function extractDecisions(text) {
         }
     }
     
-    console.log(`${decisions.length} décisions extraites`);
     return decisions;
 }
 
-// Extraction des événements (déclencheurs, résultats)
+// Extraction des événements
 function extractEvents(text) {
-    console.log('Extraction des événements...');
     const events = [];
     
-    // Mots clés pour les événements de début
     const startKeywords = [
         'lorsque', 'quand', 'dès que', 'aussitôt que', 'au moment où',
         'après que', 'suite à', 'à la réception', 'au début', 'commence',
         'démarre', 'débute', 'lors de', 'à l\'arrivée'
     ];
     
-    // Mots clés pour les événements intermédiaires ou de fin
     const endKeywords = [
         'terminé', 'complété', 'fini', 'achevé', 'livré', 'envoyé', 'transmis',
         'une fois', 'après avoir', 'lorsque terminé', 'à la fin', 'se termine',
         'entraîne', 'provoque', 'conduit à', 'résulte en', 'met fin'
     ];
     
-    // Expressions temporelles
     const timePatterns = [
         /\b(?:chaque|tous les)\s+(?:jour|matin|soir|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|semaine|mois|an)\b/gi,
         /\bà\s+(?:\d{1,2}h\d{0,2}|\d{1,2}:\d{2})\b/gi,
@@ -367,22 +386,18 @@ function extractEvents(text) {
         }
     }
     
-    console.log(`${events.length} événements extraits`);
     return events;
 }
 
-// Extraction des objets de données et magasins de données
+// Extraction des objets de données
 function extractDataObjects(text) {
-    console.log('Extraction des objets de données...');
     const dataObjects = [];
     
-    // Mots clés pour les objets de données
     const dataObjectKeywords = [
         'fichier', 'document', 'formulaire', 'rapport', 'demande', 'commande',
         'facture', 'bon', 'contrat', 'devis', 'offre', 'soumission', 'dossier'
     ];
     
-    // Mots clés pour les magasins de données
     const dataStoreKeywords = [
         'base de données', 'système', 'répertoire', 'classeur', 'archive',
         'dépôt', 'registre', 'journal', 'liste', 'catalogue', 'inventaire'
@@ -412,23 +427,19 @@ function extractDataObjects(text) {
         }
     }
     
-    console.log(`${dataObjects.length} objets de données extraits`);
     return dataObjects;
 }
 
-// Extraction des flux (séquentiels et messages)
+// Extraction des flux
 function extractFlows(text) {
-    console.log('Extraction des flux...');
     const flows = [];
     
-    // Mots clés indiquant des transitions séquentielles
     const sequenceKeywords = [
         'puis', 'ensuite', 'après', 'avant', 'finalement', 'enfin',
         'premièrement', 'deuxièmement', 'troisièmement', 'ultérieurement',
         'par la suite', 'à la fin', 'au début', 'une fois que'
     ];
     
-    // Mots clés indiquant des échanges de messages
     const messageKeywords = [
         'envoie', 'envoyer', 'envoi', 'transmet', 'transmettre', 'transmission',
         'communique', 'communiquer', 'communication', 'notifie', 'notifier',
@@ -460,17 +471,13 @@ function extractFlows(text) {
         }
     }
     
-    console.log(`${flows.length} flux extraits`);
     return flows;
 }
 
 // Générer un diagramme BPMN à partir de l'analyse
 function generateDiagram() {
-    console.log('Génération du diagramme...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
@@ -485,41 +492,27 @@ function generateDiagram() {
     const bpmnModel = createBpmnModel(analysis);
     
     // Charger le modèle dans le visualiseur
-    try {
-        bpmnModeler.importXML(bpmnModel, function(err) {
-            if (err) {
-                console.error('Erreur lors du chargement du diagramme généré', err);
-                alert('Erreur lors de la génération du diagramme. Vérifiez la console pour plus de détails.');
-            } else {
-                console.log('Diagramme généré avec succès');
-                
-                // Passer à l'onglet du diagramme
-                const diagramTab = document.querySelector('[onclick="openTab(event, \'diagram-tab\')"]');
-                if (diagramTab) {
-                    diagramTab.click();
-                } else {
-                    openTab({ currentTarget: { className: '' } }, 'diagram-tab');
-                }
-                
-                // Ajuster le zoom pour afficher tout le diagramme
-                setTimeout(() => {
-                    bpmnModeler.get('canvas').zoom('fit-viewport');
-                }, 100);
-            }
-        });
-    } catch (error) {
-        console.error('Exception lors de l\'importation du diagramme:', error);
-        alert('Une erreur s\'est produite lors de la génération du diagramme.');
-    }
+    bpmnModeler.importXML(bpmnModel).then(() => {
+        // Passer à l'onglet du diagramme
+        const diagramTab = document.querySelector('[onclick="openTab(event, \'diagram-tab\')"]');
+        if (diagramTab) {
+            diagramTab.click();
+        } else {
+            openTab({ currentTarget: { className: '' } }, 'diagram-tab');
+        }
+        
+        // Ajuster le zoom pour afficher tout le diagramme
+        setTimeout(() => {
+            bpmnModeler.get('canvas').zoom('fit-viewport');
+        }, 100);
+    }).catch(err => {
+        console.error('Erreur lors du chargement du diagramme généré', err);
+        alert('Erreur lors de la génération du diagramme.');
+    });
 }
 
 // Créer un modèle BPMN XML à partir de l'analyse
 function createBpmnModel(analysis) {
-    console.log('Création du modèle BPMN XML...');
-    
-    // Cette fonction crée un modèle BPMN XML à partir des résultats de l'analyse
-    // C'est une version simplifiée, dans une application réelle cette fonction serait beaucoup plus complexe
-    
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" 
@@ -529,7 +522,7 @@ function createBpmnModel(analysis) {
                   targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:collaboration id="Collaboration_1">`;
     
-    // Créer une piscine (pool) pour chaque acteur
+    // Créer une piscine pour chaque acteur
     for (let i = 0; i < analysis.actors.length; i++) {
         xml += `
     <bpmn:participant id="Participant_${i}" name="${analysis.actors[i]}" processRef="Process_${i}" />`;
@@ -538,7 +531,7 @@ function createBpmnModel(analysis) {
     // Ajouter les flux de messages entre participants
     if (analysis.flows && analysis.flows.length > 0) {
         const messageFlows = analysis.flows.filter(flow => flow.type === 'message');
-        for (let i = 0; i < messageFlows.length && i < 5; i++) { // Limiter à 5 pour simplifier
+        for (let i = 0; i < messageFlows.length && i < 5; i++) {
             const sourceIdx = i % analysis.actors.length;
             const targetIdx = (i + 1) % analysis.actors.length;
             
@@ -600,7 +593,7 @@ function createBpmnModel(analysis) {
   </bpmn:process>`;
     }
     
-    // Ajouter le diagramme graphique (simplifié)
+    // Ajouter le diagramme graphique
     xml += `
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">`;
@@ -693,13 +686,12 @@ function createBpmnModel(analysis) {
 
 // Réinitialiser le formulaire
 function resetForm() {
-    console.log('Réinitialisation du formulaire...');
-    
     document.getElementById('scenario').value = '';
     document.getElementById('analysis-results').innerText = '';
     
-    // Recharger un diagramme vide
-    createNewDiagram();
+    if (bpmnJSLoaded && bpmnModeler) {
+        createNewDiagram();
+    }
     
     // Revenir à l'onglet d'entrée
     const inputTab = document.querySelector('[onclick="openTab(event, \'input-tab\')"]');
@@ -708,398 +700,258 @@ function resetForm() {
     } else {
         openTab({ currentTarget: { className: '' } }, 'input-tab');
     }
-    
-    console.log('Formulaire réinitialisé');
 }
 
-// Basculer en mode édition de diagramme
+// Fonctions supplémentaires (implémentations simplifiées)
 function toggleEditMode() {
-    console.log('Basculement du mode d\'édition...');
-    
     const button = document.getElementById('edit-btn');
-    
-    if (button.textContent === 'Éditer le diagramme') {
-        button.textContent = 'Terminer l\'édition';
-        // Activer plus de fonctionnalités d'édition si nécessaire
-    } else {
-        button.textContent = 'Éditer le diagramme';
-        // Désactiver les fonctionnalités d'édition supplémentaires
+    if (button) {
+        button.textContent = button.textContent === 'Éditer le diagramme' ? 'Terminer l\'édition' : 'Éditer le diagramme';
     }
 }
 
-// Ajouter un nouvel acteur (piscine)
 function addActor() {
-    console.log('Ajout d\'un nouvel acteur...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        const modeling = bpmnModeler.get('modeling');
-        const elementFactory = bpmnModeler.get('elementFactory');
-        const canvas = bpmnModeler.get('canvas');
-        
-        if (!modeling || !elementFactory || !canvas) {
-            throw new Error('Modules BPMN requis non disponibles');
-        }
-        
-        const name = prompt('Nom de l\'acteur:', '');
-        
-        if (name) {
-            // Obtenez l'élément racine (généralement un <bpmn:Collaboration>)
-            const rootElement = canvas.getRootElement();
+    const name = prompt('Nom de l\'acteur:', '');
+    if (name) {
+        try {
+            const elementFactory = bpmnModeler.get('elementFactory');
+            const modeling = bpmnModeler.get('modeling');
+            const canvas = bpmnModeler.get('canvas');
             
-            // Créer une nouvelle piscine
             const participantShape = elementFactory.createParticipantShape({
-                businessObject: {
-                    name: name
-                }
+                businessObject: { name: name }
             });
             
-            // Ajouter la piscine au diagramme
-            modeling.createShape(participantShape, { x: 350, y: 200 }, rootElement);
-            
-            console.log('Acteur ajouté avec succès:', name);
+            modeling.createShape(participantShape, { x: 350, y: 200 }, canvas.getRootElement());
+        } catch (error) {
+            console.error('Erreur lors de l\'ajout d\'un acteur:', error);
         }
-    } catch (error) {
-        console.error('Erreur lors de l\'ajout d\'un acteur:', error);
-        alert('Erreur lors de l\'ajout d\'un acteur. Vérifiez la console pour plus de détails.');
     }
 }
 
-// Ajouter une nouvelle activité
 function addActivity() {
-    console.log('Ajout d\'une nouvelle activité...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        const modeling = bpmnModeler.get('modeling');
-        const elementFactory = bpmnModeler.get('elementFactory');
-        
-        if (!modeling || !elementFactory) {
-            throw new Error('Modules BPMN requis non disponibles');
-        }
-        
-        const name = prompt('Description de l\'activité:', '');
-        
-        if (name) {
-            // Créer une nouvelle activité (tâche)
+    const name = prompt('Description de l\'activité:', '');
+    if (name) {
+        try {
+            const elementFactory = bpmnModeler.get('elementFactory');
+            const modeling = bpmnModeler.get('modeling');
+            
             const taskShape = elementFactory.createShape({
                 type: 'bpmn:Task',
-                businessObject: {
-                    name: name
-                }
+                businessObject: { name: name }
             });
             
-            // Ajouter l'activité au diagramme à une position par défaut
             modeling.createShape(taskShape, { x: 350, y: 200 }, bpmnModeler.get('canvas').getRootElement());
-            
-            console.log('Activité ajoutée avec succès:', name);
+        } catch (error) {
+            console.error('Erreur lors de l\'ajout d\'une activité:', error);
         }
-    } catch (error) {
-        console.error('Erreur lors de l\'ajout d\'une activité:', error);
-        alert('Erreur lors de l\'ajout d\'une activité. Vérifiez la console pour plus de détails.');
     }
 }
 
-// Ajouter une nouvelle passerelle
 function addGateway() {
-    console.log('Ajout d\'une nouvelle passerelle...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        const modeling = bpmnModeler.get('modeling');
-        const elementFactory = bpmnModeler.get('elementFactory');
-        
-        if (!modeling || !elementFactory) {
-            throw new Error('Modules BPMN requis non disponibles');
-        }
-        
-        const name = prompt('Question de la passerelle:', '');
-        
-        if (name) {
-            // Créer une nouvelle passerelle exclusive
+    const name = prompt('Question de la passerelle:', '');
+    if (name) {
+        try {
+            const elementFactory = bpmnModeler.get('elementFactory');
+            const modeling = bpmnModeler.get('modeling');
+            
             const gatewayShape = elementFactory.createShape({
                 type: 'bpmn:ExclusiveGateway',
-                businessObject: {
-                    name: name
-                }
+                businessObject: { name: name }
             });
             
-            // Ajouter la passerelle au diagramme à une position par défaut
             modeling.createShape(gatewayShape, { x: 350, y: 200 }, bpmnModeler.get('canvas').getRootElement());
-            
-            console.log('Passerelle ajoutée avec succès:', name);
+        } catch (error) {
+            console.error('Erreur lors de l\'ajout d\'une passerelle:', error);
         }
-    } catch (error) {
-        console.error('Erreur lors de l\'ajout d\'une passerelle:', error);
-        alert('Erreur lors de l\'ajout d\'une passerelle. Vérifiez la console pour plus de détails.');
     }
 }
 
-// Exporter le diagramme en format XML
+// Fonctions d'exportation
 function exportXML() {
-    console.log('Exportation du diagramme en XML...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        bpmnModeler.saveXML({ format: true }, function(err, xml) {
-            if (err) {
-                console.error('Erreur lors de la sauvegarde du diagramme en XML', err);
-                alert('Erreur lors de l\'exportation du diagramme en XML.');
-            } else {
-                document.getElementById('xml-output').innerText = xml;
-                console.log('Diagramme exporté en XML avec succès');
-            }
-        });
-    } catch (error) {
-        console.error('Exception lors de l\'exportation en XML:', error);
-        alert('Une erreur s\'est produite lors de l\'exportation en XML.');
-    }
+    bpmnModeler.saveXML({ format: true }).then(({ xml }) => {
+        document.getElementById('xml-output').innerText = xml;
+    }).catch(err => {
+        console.error('Erreur lors de l\'exportation XML:', err);
+    });
 }
 
-// Exporter le diagramme en format JSON
 function exportJSON() {
-    console.log('Exportation du diagramme en JSON...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        bpmnModeler.saveXML({ format: true }, function(err, xml) {
-            if (err) {
-                console.error('Erreur lors de la sauvegarde du diagramme en XML', err);
-                alert('Erreur lors de l\'exportation du diagramme en JSON.');
-            } else {
-                // Conversion simplifiée XML vers JSON
-                const jsonObj = {
-                    xml: xml,
-                    metadata: {
-                        exportDate: new Date().toISOString(),
-                        elements: {
-                            activities: document.querySelectorAll('.djs-element.bpmn-icon-task').length || 0,
-                            events: (document.querySelectorAll('.djs-element.bpmn-icon-start-event, .djs-element.bpmn-icon-end-event').length) || 0,
-                            gateways: document.querySelectorAll('.djs-element.bpmn-icon-gateway-xor').length || 0,
-                            pools: document.querySelectorAll('.djs-element.bpmn-icon-participant').length || 0
-                        }
-                    }
-                };
-                
-                document.getElementById('json-output').innerText = JSON.stringify(jsonObj, null, 2);
-                console.log('Diagramme exporté en JSON avec succès');
-            }
-        });
-    } catch (error) {
-        console.error('Exception lors de l\'exportation en JSON:', error);
-        alert('Une erreur s\'est produite lors de l\'exportation en JSON.');
-    }
-}
-
-// Exporter le diagramme en format SVG
-function exportSVG() {
-    console.log('Exportation du diagramme en SVG...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
-        return;
-    }
-    
-    try {
-        bpmnModeler.saveSVG(function(err, svg) {
-            if (err) {
-                console.error('Erreur lors de la sauvegarde du diagramme en SVG', err);
-                alert('Erreur lors de l\'exportation du diagramme en SVG.');
-            } else {
-                const imagePreview = document.getElementById('image-preview');
-                imagePreview.innerHTML = svg;
-                
-                // Ajuster les dimensions
-                const svgElement = imagePreview.querySelector('svg');
-                if (svgElement) {
-                    svgElement.setAttribute('width', '100%');
-                    svgElement.setAttribute('height', '400px');
+    bpmnModeler.saveXML({ format: true }).then(({ xml }) => {
+        const jsonObj = {
+            xml: xml,
+            metadata: {
+                exportDate: new Date().toISOString(),
+                elements: {
+                    activities: document.querySelectorAll('.djs-element.bpmn-icon-task').length || 0,
+                    events: (document.querySelectorAll('.djs-element.bpmn-icon-start-event, .djs-element.bpmn-icon-end-event').length) || 0,
+                    gateways: document.querySelectorAll('.djs-element.bpmn-icon-gateway-xor').length || 0,
+                    pools: document.querySelectorAll('.djs-element.bpmn-icon-participant').length || 0
                 }
-                
-                console.log('Diagramme exporté en SVG avec succès');
             }
-        });
-    } catch (error) {
-        console.error('Exception lors de l\'exportation en SVG:', error);
-        alert('Une erreur s\'est produite lors de l\'exportation en SVG.');
-    }
+        };
+        
+        document.getElementById('json-output').innerText = JSON.stringify(jsonObj, null, 2);
+    }).catch(err => {
+        console.error('Erreur lors de l\'exportation JSON:', err);
+    });
 }
 
-// Exporter le diagramme en format PNG
+function exportSVG() {
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
+        return;
+    }
+    
+    bpmnModeler.saveSVG().then(({ svg }) => {
+        const imagePreview = document.getElementById('image-preview');
+        imagePreview.innerHTML = svg;
+        
+        // Ajuster les dimensions
+        const svgElement = imagePreview.querySelector('svg');
+        if (svgElement) {
+            svgElement.setAttribute('width', '100%');
+            svgElement.setAttribute('height', '400px');
+        }
+    }).catch(err => {
+        console.error('Erreur lors de l\'exportation SVG:', err);
+    });
+}
+
 function exportPNG() {
-    console.log('Exportation du diagramme en PNG...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        bpmnModeler.saveSVG(function(err, svg) {
-            if (err) {
-                console.error('Erreur lors de la sauvegarde du diagramme en SVG', err);
-                alert('Erreur lors de l\'exportation du diagramme en PNG.');
-            } else {
-                // Convertir SVG en PNG à l'aide d'un canvas
-                const imagePreview = document.getElementById('image-preview');
+    bpmnModeler.saveSVG().then(({ svg }) => {
+        // Créer une image à partir du SVG
+        const imagePreview = document.getElementById('image-preview');
+        
+        try {
+            // Encodage base64 du SVG
+            const svgBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+            
+            // Créer l'image
+            const img = new Image();
+            img.onload = function() {
+                // Créer un canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
                 
-                // Créer une image à partir du SVG
-                const img = new Image();
-                img.onload = function() {
-                    // Créer un canvas temporaire
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
+                // Dessiner l'image
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                try {
+                    // Convertir en PNG
+                    const pngUrl = canvas.toDataURL('image/png');
                     
-                    // Dessiner l'image sur le canvas
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
+                    // Afficher l'image
+                    imagePreview.innerHTML = `<img src="${pngUrl}" alt="Diagramme BPMN" style="max-width: 100%; max-height: 400px;">`;
                     
-                    // Convertir le canvas en URL de données PNG
-                    try {
-                        const pngUrl = canvas.toDataURL('image/png');
-                        
-                        // Afficher l'image PNG
-                        imagePreview.innerHTML = `<img src="${pngUrl}" alt="Diagramme BPMN" style="max-width: 100%; max-height: 400px;">`;
-                        
-                        // Ajouter un lien de téléchargement
-                        const downloadLink = document.createElement('a');
-                        downloadLink.href = pngUrl;
-                        downloadLink.download = 'diagram.png';
-                        downloadLink.textContent = 'Télécharger l\'image PNG';
-                        downloadLink.style.display = 'block';
-                        downloadLink.style.marginTop = '10px';
-                        imagePreview.appendChild(downloadLink);
-                        
-                        console.log('Diagramme exporté en PNG avec succès');
-                    } catch (e) {
-                        console.error('Erreur lors de la conversion en PNG', e);
-                        imagePreview.innerHTML = 'Erreur lors de la conversion en PNG. Essayez d\'utiliser le format SVG à la place.';
-                    }
-                };
-                
-                img.onerror = function() {
-                    console.error('Erreur lors du chargement de l\'image SVG');
-                    imagePreview.innerHTML = 'Erreur lors du chargement de l\'image SVG. Essayez d\'exporter en SVG à la place.';
-                };
-                
-                // Déclencher le chargement de l'image à partir du SVG
-                img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
-            }
-        });
-    } catch (error) {
-        console.error('Exception lors de l\'exportation en PNG:', error);
-        alert('Une erreur s\'est produite lors de l\'exportation en PNG.');
-    }
+                    // Lien de téléchargement
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = pngUrl;
+                    downloadLink.download = 'diagram.png';
+                    downloadLink.textContent = 'Télécharger l\'image PNG';
+                    downloadLink.style.display = 'block';
+                    downloadLink.style.marginTop = '10px';
+                    imagePreview.appendChild(downloadLink);
+                } catch (e) {
+                    console.error('Erreur de conversion en PNG:', e);
+                    imagePreview.innerHTML = 'Erreur de conversion en PNG. Utilisez le format SVG.';
+                }
+            };
+            
+            img.onerror = function() {
+                console.error('Erreur de chargement du SVG');
+                imagePreview.innerHTML = 'Erreur de chargement du SVG. Essayez l\'export SVG.';
+            };
+            
+            img.src = svgBase64;
+        } catch (error) {
+            console.error('Erreur de traitement du SVG:', error);
+            imagePreview.innerHTML = 'Erreur de traitement du SVG.';
+        }
+    }).catch(err => {
+        console.error('Erreur lors de l\'exportation PNG:', err);
+    });
 }
 
-// Télécharger le diagramme en format XML
 function downloadXML() {
-    console.log('Téléchargement du diagramme en XML...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        bpmnModeler.saveXML({ format: true }, function(err, xml) {
-            if (err) {
-                console.error('Erreur lors de la sauvegarde du diagramme en XML', err);
-                alert('Erreur lors du téléchargement du diagramme en XML.');
-            } else {
-                // Créer un lien de téléchargement
-                const downloadLink = document.createElement('a');
-                downloadLink.href = 'data:application/xml;charset=utf-8,' + encodeURIComponent(xml);
-                downloadLink.download = 'diagram.bpmn';
-                
-                // Cliquer sur le lien pour déclencher le téléchargement
-                document.body.appendChild(downloadLink);
-                downloadLink.click();
-                document.body.removeChild(downloadLink);
-                
-                console.log('Diagramme téléchargé en XML avec succès');
-            }
-        });
-    } catch (error) {
-        console.error('Exception lors du téléchargement en XML:', error);
-        alert('Une erreur s\'est produite lors du téléchargement en XML.');
-    }
+    bpmnModeler.saveXML({ format: true }).then(({ xml }) => {
+        const downloadLink = document.createElement('a');
+        downloadLink.href = 'data:application/xml;charset=utf-8,' + encodeURIComponent(xml);
+        downloadLink.download = 'diagram.bpmn';
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }).catch(err => {
+        console.error('Erreur lors du téléchargement XML:', err);
+    });
 }
 
-// Télécharger le diagramme en format JSON
 function downloadJSON() {
-    console.log('Téléchargement du diagramme en JSON...');
-    
-    // Vérifier que le modeler BPMN est initialisé
-    if (!bpmnModeler) {
-        alert('Le modeler BPMN n\'est pas initialisé. Veuillez rafraîchir la page.');
+    if (!bpmnJSLoaded || !bpmnModeler) {
+        alert('Le modeler BPMN n\'est pas initialisé correctement.');
         return;
     }
     
-    try {
-        bpmnModeler.saveXML({ format: true }, function(err, xml) {
-            if (err) {
-                console.error('Erreur lors de la sauvegarde du diagramme en XML', err);
-                alert('Erreur lors du téléchargement du diagramme en JSON.');
-            } else {
-                // Conversion simplifiée XML vers JSON
-                const jsonObj = {
-                    xml: xml,
-                    metadata: {
-                        exportDate: new Date().toISOString(),
-                        elements: {
-                            activities: document.querySelectorAll('.djs-element.bpmn-icon-task').length || 0,
-                            events: (document.querySelectorAll('.djs-element.bpmn-icon-start-event, .djs-element.bpmn-icon-end-event').length) || 0,
-                            gateways: document.querySelectorAll('.djs-element.bpmn-icon-gateway-xor').length || 0,
-                            pools: document.querySelectorAll('.djs-element.bpmn-icon-participant').length || 0
-                        }
-                    }
-                };
-                
-                // Créer un lien de téléchargement
-                const downloadLink = document.createElement('a');
-                downloadLink.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(jsonObj, null, 2));
-                downloadLink.download = 'diagram.json';
-                
-                // Cliquer sur le lien pour déclencher le téléchargement
-                document.body.appendChild(downloadLink);
-                downloadLink.click();
-                document.body.removeChild(downloadLink);
-                
-                console.log('Diagramme téléchargé en JSON avec succès');
+    bpmnModeler.saveXML({ format: true }).then(({ xml }) => {
+        const jsonObj = {
+            xml: xml,
+            metadata: {
+                exportDate: new Date().toISOString(),
+                elements: {
+                    activities: document.querySelectorAll('.djs-element.bpmn-icon-task').length || 0,
+                    events: (document.querySelectorAll('.djs-element.bpmn-icon-start-event, .djs-element.bpmn-icon-end-event').length) || 0,
+                    gateways: document.querySelectorAll('.djs-element.bpmn-icon-gateway-xor').length || 0,
+                    pools: document.querySelectorAll('.djs-element.bpmn-icon-participant').length || 0
+                }
             }
-        });
-    } catch (error) {
-        console.error('Exception lors du téléchargement en JSON:', error);
-        alert('Une erreur s\'est produite lors du téléchargement en JSON.');
-    }
+        };
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(jsonObj, null, 2));
+        downloadLink.download = 'diagram.json';
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }).catch(err => {
+        console.error('Erreur lors du téléchargement JSON:', err);
+    });
 }
