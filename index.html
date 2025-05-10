@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Diagrammes BPMN</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bpmn-js/9.4.1/assets/diagram-js.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bpmn-js/9.4.1/assets/bpmn-font/css/bpmn.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #canvas {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            margin-top: 20px;
+        }
+        .panels {
+            display: flex;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+        }
+        .control-panel {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .json-preview {
+            width: 100%;
+            min-height: 300px;
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            overflow: auto;
+            white-space: pre;
+            background-color: #f9f9f9;
+        }
+        .actors-panel {
+            margin-top: 10px;
+        }
+        .actor-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .actor-item input {
+            margin-right: 10px;
+        }
+        .tabs {
+            margin-top: 20px;
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 10px 20px;
+            transition: 0.3s;
+            font-size: 16px;
+        }
+        .tab:hover {
+            background-color: #ddd;
+        }
+        .tab.active {
+            background-color: #ccc;
+        }
+        .tabcontent {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+        }
+        .show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Générateur de Diagrammes BPMN</h1>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="openTab(event, 'input-tab')">Entrée</button>
+            <button class="tab" onclick="openTab(event, 'diagram-tab')">Diagramme</button>
+            <button class="tab" onclick="openTab(event, 'export-tab')">Export</button>
+        </div>
+        
+        <div id="input-tab" class="tabcontent show">
+            <div class="form-group">
+                <label for="scenario">Mise en situation:</label>
+                <textarea id="scenario" placeholder="Entrez la mise en situation du processus..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>Options d'analyse:</label>
+                <div class="actors-panel">
+                    <div class="actor-item">
+                        <input type="checkbox" id="auto-detect-actors" checked>
+                        <label for="auto-detect-actors">Détecter automatiquement les acteurs</label>
+                    </div>
+                    <div class="actor-item">
+                        <input type="checkbox" id="auto-detect-activities" checked>
+                        <label for="auto-detect-activities">Détecter automatiquement les activités</label>
+                    </div>
+                    <div class="actor-item">
+                        <input type="checkbox" id="auto-detect-flows" checked>
+                        <label for="auto-detect-flows">Détecter automatiquement les flux</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <button id="analyze-btn">Analyser le texte</button>
+                <button id="generate-btn">Générer le diagramme</button>
+                <button id="reset-btn">Réinitialiser</button>
+            </div>
+            
+            <div class="form-group" style="margin-top: 20px;">
+                <label for="analysis-results">Résultats de l'analyse:</label>
+                <div id="analysis-results" class="json-preview"></div>
+            </div>
+        </div>
+        
+        <div id="diagram-tab" class="tabcontent">
+            <div id="canvas"></div>
+            
+            <div class="control-panel">
+                <button id="edit-btn">Éditer le diagramme</button>
+                <button id="add-actor-btn">Ajouter un acteur</button>
+                <button id="add-activity-btn">Ajouter une activité</button>
+                <button id="add-gateway-btn">Ajouter une passerelle</button>
+            </div>
+        </div>
+        
+        <div id="export-tab" class="tabcontent">
+            <div class="panels">
+                <div class="panel">
+                    <h2>Format BPMN XML</h2>
+                    <button id="export-xml-btn">Exporter en XML</button>
+                    <button id="download-xml-btn">Télécharger XML</button>
+                    <div id="xml-output" class="json-preview"></div>
+                </div>
+                <div class="panel">
+                    <h2>Format JSON</h2>
+                    <button id="export-json-btn">Exporter en JSON</button>
+                    <button id="download-json-btn">Télécharger JSON</button>
+                    <div id="json-output" class="json-preview"></div>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 20px;">
+                <h2>Image du diagramme</h2>
+                <button id="export-svg-btn">Exporter en SVG</button>
+                <button id="export-png-btn">Exporter en PNG</button>
+                <div id="image-preview" style="margin-top: 20px; text-align: center;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bpmn-js/9.4.1/bpmn-modeler.production.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
