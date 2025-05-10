@@ -8,13 +8,14 @@
         body { font-family: Arial, sans-serif; padding: 20px; }
         textarea { width: 100%; height: 200px; margin-top: 10px; }
         button { margin-top: 10px; }
-        pre { background: #f4f4f4; padding: 10px; border: 1px solid #ccc; }
+        pre { background: #f4f4f4; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; }
     </style>
 </head>
 <body>
     <h1>Assistant de Modélisation de Processus d'Affaires</h1>
+    <p>Décrivez une mise en situation dans la zone ci-dessous. Appuyez sur le bouton pour obtenir des instructions détaillées sur la façon de tracer manuellement votre modèle BPMN.</p>
     <label for="inputScenario">Entrez votre mise en situation :</label>
-    <textarea id="inputScenario"></textarea>
+    <textarea id="inputScenario" placeholder="Exemple : Un client appelle pour commander des fournitures...\nExpliquez ici toutes les étapes."></textarea>
     <button onclick="generateInstructions()">Générer les instructions</button>
     <h2>Instructions Générées :</h2>
     <pre id="outputInstructions"></pre>
