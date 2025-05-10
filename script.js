@@ -6,38 +6,27 @@ function generateInstructions() {
     }
 
     let instructions = [];
-    instructions.push("Analyser la mise en situation pour identifier les éléments suivants :");
+    instructions.push("Voici les étapes détaillées pour tracer votre modèle BPMN à partir de votre mise en situation :\n");
 
-    // Étape 1 : Frontières du processus
-    instructions.push("- Définir les piscines (organisations) et les couloirs (rôles ou départements). (Symbole: 🟦 et 🟩)");
+    instructions.push("1. **Définir les frontières du processus**\n   - Identifiez qui déclenche le processus (événement de début ⚪).\n   - Déterminez ce qui marque la fin du processus (événement de fin ⚫).\n   - Délimitez les acteurs :\n     - Piscine (🟦) pour chaque organisation impliquée.\n     - Couloir (🟩) pour chaque département ou rôle interne.");
 
-    // Étape 2 : Acteurs, objets et systèmes
-    instructions.push("- Identifier les acteurs, les objets manipulés et les systèmes utilisés.");
+    instructions.push("2. **Lister les acteurs, objets et systèmes**\n   - Notez les acteurs qui réalisent les actions.\n   - Listez les objets échangés (📄) comme formulaires, commandes, avis.\n   - Décrivez les systèmes utilisés (PGI, Système comptable, Site Web, etc.).");
 
-    // Étape 3 : Activités
-    instructions.push("- Décrire les activités réalisées dans chaque couloir. (Symbole: ▭)");
+    instructions.push("3. **Détailler les activités**\n   - Décrivez chaque action réalisée dans les couloirs (▭), comme \"Vérifier le client\" ou \"Saisir la commande\".");
 
-    // Étape 4 : Événements
-    instructions.push("- Positionner les événements de début, intermédiaires et de fin. (Symboles: ⚪ et ⚫)");
+    instructions.push("4. **Positionner les événements**\n   - Début (⚪) : Exemple \"Réception d’un appel du client\".\n   - Intermédiaire (⚪⚪) : Exemple \"Validation du crédit\".\n   - Fin (⚫) : Exemple \"Commande livrée\" ou \"Commande annulée\".");
 
-    // Étape 5 : Flux
-    instructions.push("- Tracer les flux de séquence (➡️) et les flux de message (➖).");
+    instructions.push("5. **Tracer les flux**\n   - Flèches pleines (➡️) pour les séquences d’activités.\n   - Flèches en pointillés (➖) pour les échanges de messages entre piscines.");
 
-    // Étape 6 : Passerelles
-    instructions.push("- Ajouter les passerelles de décision (Symbole: 🔷).");
+    instructions.push("6. **Ajouter les passerelles de décision**\n   - Représentez les décisions Oui/Non avec une passerelle (🔷), par exemple : \"Crédit valide ?\".");
 
-    // Étape 7 : Objets et magasins de données
-    instructions.push("- Ajouter les objets de données (Symbole: 📄) et les magasins de données (Symbole: 🗄️).");
+    instructions.push("7. **Inclure les objets et magasins de données**\n   - 📄 Objets de données : Formulaires, rapports, etc.\n   - 🗄️ Magasins de données : Bases de données, listes officielles, etc.");
 
-    // Étape 8 : Cas multiples et exceptions
-    instructions.push("- Décrire les issues possibles : réussite, échec, exception.");
+    instructions.push("8. **Traiter les cas multiples**\n   - Décrivez les différentes issues possibles du processus : réussite, échec, attente, exception.");
 
-    // Étape 9 : Points inter-organisationnels
-    instructions.push("- Identifier les échanges entre organisations (flux de message).");
+    instructions.push("9. **Identifier les points inter-organisationnels**\n   - Tracez les flux de messages entre les piscines pour montrer les échanges entre organisations.");
 
-    // Étape 10 : Validation
-    instructions.push("- Vérifier la complétude, la logique et la lisibilité du modèle.");
+    instructions.push("10. **Valider votre modèle**\n   - Vérifiez que toutes les étapes, acteurs, décisions et flux sont représentés de façon claire et complète.");
 
-    // Générer l'affichage
-    document.getElementById('outputInstructions').innerText = instructions.join('\n');
+    document.getElementById('outputInstructions').innerText = instructions.join('\n\n');
 }
