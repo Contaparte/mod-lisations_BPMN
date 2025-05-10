@@ -8,45 +8,56 @@ function generateInstructions() {
     let instructions = [];
     instructions.push("Voici les étapes détaillées pour tracer votre modèle BPMN à partir de votre mise en situation :\n");
 
-    instructions.push("1. **Définir les frontières du processus**\n   - Identifiez qui déclenche le processus (événement de début ⚪).\n   - Déterminez ce qui marque la fin du processus (événement de fin ⚫).\n   - Délimitez les acteurs :\n     - Piscine (🟦) pour chaque organisation impliquée.\n     - Couloir (🟩) pour chaque département ou rôle interne.");
+    // Instructions générales
+    instructions.push("1. **Définir les frontières du processus**\n   - Piscines (🟦) pour chaque organisation.\n   - Couloirs (🟩) pour chaque département ou rôle interne.");
 
-    instructions.push("2. **Lister les acteurs, objets et systèmes**\n   - Notez les acteurs qui réalisent les actions.\n   - Listez les objets échangés (📄) comme formulaires, commandes, avis.\n   - Décrivez les systèmes utilisés (PGI, Système comptable, Site Web, etc.).");
+    instructions.push("2. **Lister les acteurs, objets et systèmes**\n   - Acteurs, objets échangés (📄), et systèmes impliqués.");
 
-    instructions.push("3. **Détailler les activités**\n   - Décrivez chaque action réalisée dans les couloirs (▭), comme \"Vérifier le client\" ou \"Saisir la commande\".");
+    instructions.push("3. **Détailler les activités**\n   - Actions réalisées dans les couloirs (▭).\n");
 
-    instructions.push("4. **Positionner les événements**\n   - Début (⚪) : Exemple \"Réception d’un appel du client\".\n   - Intermédiaire (⚪⚪) : Exemple \"Validation du crédit\".\n   - Fin (⚫) : Exemple \"Commande livrée\" ou \"Commande annulée\".");
+    instructions.push("4. **Positionner les événements**\n   - Début (⚪), intermédiaire (⚪⚪), et fin (⚫).");
 
-    instructions.push("5. **Tracer les flux**\n   - Flèches pleines (➡️) pour les séquences d’activités.\n   - Flèches en pointillés (➖) pour les échanges de messages entre piscines.");
+    instructions.push("5. **Tracer les flux**\n   - Séquences (➡️) et messages inter-piscines (➖).");
 
-    instructions.push("6. **Ajouter les passerelles de décision**\n   - Représentez les décisions Oui/Non avec une passerelle (🔷), par exemple : \"Crédit valide ?\".");
+    instructions.push("6. **Ajouter les passerelles de décision**\n   - Décisions Oui/Non (🔷).");
 
-    instructions.push("7. **Inclure les objets et magasins de données**\n   - 📄 Objets de données : Formulaires, rapports, etc.\n   - 🗄️ Magasins de données : Bases de données, listes officielles, etc.");
+    instructions.push("7. **Inclure les objets et magasins de données**\n   - 📄 Objets de données et 🗄️ Magasins de données.");
 
-    instructions.push("8. **Traiter les cas multiples**\n   - Décrivez les différentes issues possibles du processus : réussite, échec, attente, exception.");
-
-    instructions.push("9. **Identifier les points inter-organisationnels**\n   - Tracez les flux de messages entre les piscines pour montrer les échanges entre organisations.");
-
-    instructions.push("10. **Valider votre modèle**\n   - Vérifiez que toutes les étapes, acteurs, décisions et flux sont représentés de façon claire et complète.\n");
-
-    // Analyse spécifique du texte fourni par l'utilisateur
     instructions.push("\n---\nAnalyse spécifique de votre mise en situation :\n");
+
     const sentences = scenarioText.split(/\n|\.|!|\?/).filter(s => s.trim().length > 0);
 
     sentences.forEach((sentence, index) => {
         let action = `- Étape ${index + 1} : ${sentence.trim()}`;
 
         if (index === 0) {
-            action += "\n  👉 Action : Tracez un événement de début (⚪) à la frontière de la piscine représentant l'acteur qui déclenche cette action.";
-        } else if (sentence.toLowerCase().includes("vérifie") || sentence.toLowerCase().includes("contrôle")) {
-            action += "\n  👉 Action : Tracez une activité (▭) dans le couloir approprié représentant cette vérification.";
-        } else if (sentence.toLowerCase().includes("confirme") || sentence.toLowerCase().includes("approuve")) {
-            action += "\n  👉 Action : Tracez une activité (▭) dans le couloir approprié représentant cette confirmation.";
-        } else if (sentence.toLowerCase().includes("envoie") || sentence.toLowerCase().includes("communique")) {
-            action += "\n  👉 Action : Tracez un flux de message (➖) entre les piscines concernées.";
-        } else if (sentence.toLowerCase().includes("commande terminée") || sentence.toLowerCase().includes("processus se termine")) {
-            action += "\n  👉 Action : Tracez un événement de fin (⚫) dans le couloir approprié.";
+            action += "\n  👉 Action : Tracez un événement en début générique (⚪) à la frontière de la piscine 'Client'. Reliez-le avec un flux de message (➖) vers un événement début message (⚪) au début du couloir correspondant.";
         } else {
-            action += "\n  👉 Action : Tracez une activité (▭) dans le couloir approprié pour cette action.";
+            let lowerSentence = sentence.toLowerCase();
+
+            if (lowerSentence.includes("vérifie") || lowerSentence.includes("contrôle")) {
+                action += "\n  👉 Action : Tracez une activité de type tâche (▭) pour la vérification, suivie d'un flux de séquence (➡️).";
+            } else if (lowerSentence.includes("consulte") || lowerSentence.includes("accède")) {
+                action += "\n  👉 Action : Tracez un objet de données (📄) relié par une association (ligne sans flèche) à l'activité correspondante.";
+            } else if (lowerSentence.includes("saisit") || lowerSentence.includes("entre")) {
+                action += "\n  👉 Action : Tracez une activité de saisie de données (▭) dans le couloir concerné, reliée par un flux de séquence (➡️).";
+            } else if (lowerSentence.includes("envoie") || lowerSentence.includes("communique")) {
+                action += "\n  👉 Action : Tracez un flux de message (➖) entre le couloir émetteur et le destinataire.";
+            } else if (lowerSentence.includes("attend") || lowerSentence.includes("patiente")) {
+                action += "\n  👉 Action : Tracez un événement intermédiaire minuterie (⏲️) pour indiquer une attente.";
+            } else if (lowerSentence.includes("reçoit") || lowerSentence.includes("réceptionne")) {
+                action += "\n  👉 Action : Tracez un événement intermédiaire de réception (⚪⚪) et reliez-le par un flux de message (➖) à l'expéditeur.";
+            } else if (lowerSentence.includes("décide") || lowerSentence.includes("choisit") || lowerSentence.includes("sélectionne")) {
+                action += "\n  👉 Action : Tracez une passerelle exclusive (🔷) avec des flux de séquence (➡️) pour chaque option.";
+            } else if (lowerSentence.includes("stocke") || lowerSentence.includes("enregistre") || lowerSentence.includes("archive")) {
+                action += "\n  👉 Action : Tracez un magasin de données (🗄️) sous l'activité et reliez-le par une association.";
+            } else if (lowerSentence.includes("livre") || lowerSentence.includes("fournit")) {
+                action += "\n  👉 Action : Tracez une activité de livraison (▭) et un flux de séquence (➡️) vers un événement de fin (⚫).";
+            } else if (lowerSentence.includes("termine") || lowerSentence.includes("met fin") || lowerSentence.includes("fin du processus")) {
+                action += "\n  👉 Action : Tracez un événement de fin (⚫) relié par un flux de séquence (➡️) à l'activité précédente.";
+            } else {
+                action += "\n  👉 Action : Tracez une activité (▭) dans le couloir concerné, reliée par un flux de séquence (➡️).";
+            }
         }
 
         instructions.push(action);
