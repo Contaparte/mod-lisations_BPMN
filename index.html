@@ -3,220 +3,390 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Générateur de Diagrammes BPMN</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bpmn-js/9.4.1/assets/diagram-js.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bpmn-js/9.4.1/assets/bpmn-font/css/bpmn.css">
+    <title>Modelisateur BPMN</title>
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
+            line-height: 1.6;
             padding: 20px;
             background-color: #f5f5f5;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            padding: 20px;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        .form-group {
+        header {
+            text-align: center;
             margin-bottom: 20px;
         }
-        label {
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .tools {
+            flex: 1;
+            min-width: 250px;
+            background-color: #fff;
+            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .tools h2 {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .tool-section {
+            margin-bottom: 20px;
+        }
+        .tool-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .tool-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            height: 80px;
+        }
+        .tool-button:hover {
+            background-color: #e0e0e0;
+            transform: translateY(-2px);
+        }
+        .tool-icon {
+            font-size: 24px;
+            margin-bottom: 5px;
+            color: #444;
+        }
+        .canvas-container {
+            flex: 3;
+            min-width: 500px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            height: 600px;
+            overflow: hidden;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+            background-image: 
+                linear-gradient(rgba(200, 200, 200, 0.2) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(200, 200, 200, 0.2) 1px, transparent 1px);
+            background-size: 20px 20px;
+            position: relative;
+            overflow: auto;
+        }
+        .instructions {
+            width: 100%;
+            background-color: #fff;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .instructions h2 {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .symbol {
+            display: inline-block;
+            margin: 0 5px;
+            vertical-align: middle;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .close-btn {
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .modal-body label {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
         }
-        textarea {
+        .modal-body input,
+        .modal-body select {
             width: 100%;
-            min-height: 200px;
-            padding: 10px;
+            padding: 8px;
+            margin-bottom: 15px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            font-family: monospace;
-            resize: vertical;
         }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        #canvas {
-            width: 100%;
-            height: 600px;
-            border: 1px solid #ddd;
-            margin-top: 20px;
-        }
-        .panels {
+        .modal-footer {
             display: flex;
-            gap: 20px;
-        }
-        .panel {
-            flex: 1;
-        }
-        .control-panel {
-            margin-top: 20px;
-            display: flex;
+            justify-content: flex-end;
             gap: 10px;
+            margin-top: 15px;
         }
-        .json-preview {
-            width: 100%;
-            min-height: 300px;
-            margin-top: 10px;
-            padding: 10px;
-            border: 1px solid #ddd;
+        .btn {
+            padding: 8px 15px;
+            border: none;
             border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            overflow: auto;
-            white-space: pre;
-            background-color: #f9f9f9;
+            cursor: pointer;
         }
-        .actors-panel {
-            margin-top: 10px;
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
         }
-        .actor-item {
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .bpmn-element {
+            position: absolute;
+            background: #fff;
+            border: 1px solid #333;
+            user-select: none;
+            cursor: move;
             display: flex;
             align-items: center;
-            margin-bottom: 5px;
+            justify-content: center;
+            font-size: 14px;
+            padding: 5px;
         }
-        .actor-item input {
-            margin-right: 10px;
+        .bpmn-event {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
         }
-        .tabs {
-            margin-top: 20px;
-            overflow: hidden;
-            border: 1px solid #ccc;
-            background-color: #f1f1f1;
-            border-radius: 4px 4px 0 0;
+        .bpmn-activity {
+            width: 100px;
+            height: 60px;
+            border-radius: 8px;
+            text-align: center;
         }
-        .tab {
-            background-color: inherit;
-            float: left;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            padding: 10px 20px;
-            transition: 0.3s;
-            font-size: 16px;
+        .bpmn-gateway {
+            width: 40px;
+            height: 40px;
+            transform: rotate(45deg);
+            background-color: #fff;
         }
-        .tab:hover {
-            background-color: #ddd;
-        }
-        .tab.active {
-            background-color: #ccc;
-        }
-        .tabcontent {
-            display: none;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-top: none;
-            border-radius: 0 0 4px 4px;
-        }
-        .show {
+        .bpmn-gateway span {
+            transform: rotate(-45deg);
             display: block;
+        }
+        .start-event {
+            border: 1.5px solid #333;
+        }
+        .end-event {
+            border: 3px solid #333;
+        }
+        .gateway-exclusive::after {
+            content: "X";
+            position: absolute;
+            transform: rotate(-45deg);
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .connector {
+            position: absolute;
+            background-color: transparent;
+            pointer-events: none;
+        }
+        .connector-line {
+            position: absolute;
+            background-color: #333;
+            height: 2px;
+            transform-origin: 0 0;
+        }
+        .connector-arrow {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 6px 0 6px 10px;
+            border-color: transparent transparent transparent #333;
+        }
+        .tool-selected {
+            background-color: #d4edda;
+            border-color: #28a745;
         }
     </style>
 </head>
 <body>
+    <header>
+        <h1>Modélisateur de Processus d'Affaires BPMN</h1>
+    </header>
+    
     <div class="container">
-        <h1>Générateur de Diagrammes BPMN</h1>
-        
-        <div class="tabs">
-            <button class="tab active" onclick="openTab(event, 'input-tab')">Entrée</button>
-            <button class="tab" onclick="openTab(event, 'diagram-tab')">Diagramme</button>
-            <button class="tab" onclick="openTab(event, 'export-tab')">Export</button>
-        </div>
-        
-        <div id="input-tab" class="tabcontent show">
-            <div class="form-group">
-                <label for="scenario">Mise en situation:</label>
-                <textarea id="scenario" placeholder="Entrez la mise en situation du processus..."></textarea>
-            </div>
+        <div class="tools">
+            <h2>Outils</h2>
             
-            <div class="form-group">
-                <label>Options d'analyse:</label>
-                <div class="actors-panel">
-                    <div class="actor-item">
-                        <input type="checkbox" id="auto-detect-actors" checked>
-                        <label for="auto-detect-actors">Détecter automatiquement les acteurs</label>
+            <div class="tool-section">
+                <h3>Événements</h3>
+                <div class="tool-buttons">
+                    <div class="tool-button" data-tool="start-event">
+                        <div class="tool-icon">⭘</div>
+                        <span>Début</span>
                     </div>
-                    <div class="actor-item">
-                        <input type="checkbox" id="auto-detect-activities" checked>
-                        <label for="auto-detect-activities">Détecter automatiquement les activités</label>
+                    <div class="tool-button" data-tool="end-event">
+                        <div class="tool-icon">◉</div>
+                        <span>Fin</span>
                     </div>
-                    <div class="actor-item">
-                        <input type="checkbox" id="auto-detect-flows" checked>
-                        <label for="auto-detect-flows">Détecter automatiquement les flux</label>
+                    <div class="tool-button" data-tool="intermediate-event">
+                        <div class="tool-icon">⊚</div>
+                        <span>Intermédiaire</span>
                     </div>
                 </div>
             </div>
             
-            <div class="control-panel">
-                <button id="analyze-btn">Analyser le texte</button>
-                <button id="generate-btn">Générer le diagramme</button>
-                <button id="reset-btn">Réinitialiser</button>
+            <div class="tool-section">
+                <h3>Activités</h3>
+                <div class="tool-buttons">
+                    <div class="tool-button" data-tool="activity-generic">
+                        <div class="tool-icon">▭</div>
+                        <span>Générique</span>
+                    </div>
+                    <div class="tool-button" data-tool="activity-manual">
+                        <div class="tool-icon">✋▭</div>
+                        <span>Manuelle</span>
+                    </div>
+                    <div class="tool-button" data-tool="activity-user">
+                        <div class="tool-icon">👤▭</div>
+                        <span>Utilisateur</span>
+                    </div>
+                    <div class="tool-button" data-tool="activity-service">
+                        <div class="tool-icon">⚙️▭</div>
+                        <span>Service</span>
+                    </div>
+                </div>
             </div>
             
-            <div class="form-group" style="margin-top: 20px;">
-                <label for="analysis-results">Résultats de l'analyse:</label>
-                <div id="analysis-results" class="json-preview"></div>
+            <div class="tool-section">
+                <h3>Passerelles</h3>
+                <div class="tool-buttons">
+                    <div class="tool-button" data-tool="gateway-exclusive">
+                        <div class="tool-icon">◇</div>
+                        <span>Exclusive</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-section">
+                <h3>Flux</h3>
+                <div class="tool-buttons">
+                    <div class="tool-button" data-tool="flow-sequence">
+                        <div class="tool-icon">→</div>
+                        <span>Séquence</span>
+                    </div>
+                    <div class="tool-button" data-tool="flow-message">
+                        <div class="tool-icon">⤑</div>
+                        <span>Message</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tool-section">
+                <h3>Données</h3>
+                <div class="tool-buttons">
+                    <div class="tool-button" data-tool="data-object">
+                        <div class="tool-icon">📄</div>
+                        <span>Objet</span>
+                    </div>
+                    <div class="tool-button" data-tool="data-store">
+                        <div class="tool-icon">📚</div>
+                        <span>Magasin</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tool-section">
+                <h3>Contexte</h3>
+                <div class="tool-buttons">
+                    <div class="tool-button" data-tool="pool">
+                        <div class="tool-icon">▬</div>
+                        <span>Piscine</span>
+                    </div>
+                    <div class="tool-button" data-tool="lane">
+                        <div class="tool-icon">▭</div>
+                        <span>Couloir</span>
+                    </div>
+                </div>
             </div>
         </div>
         
-        <div id="diagram-tab" class="tabcontent">
+        <div class="canvas-container">
             <div id="canvas"></div>
-            
-            <div class="control-panel">
-                <button id="edit-btn">Éditer le diagramme</button>
-                <button id="add-actor-btn">Ajouter un acteur</button>
-                <button id="add-activity-btn">Ajouter une activité</button>
-                <button id="add-gateway-btn">Ajouter une passerelle</button>
-            </div>
         </div>
-        
-        <div id="export-tab" class="tabcontent">
-            <div class="panels">
-                <div class="panel">
-                    <h2>Format BPMN XML</h2>
-                    <button id="export-xml-btn">Exporter en XML</button>
-                    <button id="download-xml-btn">Télécharger XML</button>
-                    <div id="xml-output" class="json-preview"></div>
-                </div>
-                <div class="panel">
-                    <h2>Format JSON</h2>
-                    <button id="export-json-btn">Exporter en JSON</button>
-                    <button id="download-json-btn">Télécharger JSON</button>
-                    <div id="json-output" class="json-preview"></div>
-                </div>
+    </div>
+    
+    <div class="instructions">
+        <h2>Guide BPMN</h2>
+        <p><strong>Formes de base en BPMN</strong></p>
+        <ul>
+            <li><strong>Contexte</strong> - Représente le périmètre du processus et les acteurs impliqués</li>
+            <li><strong>Événements</strong> - Représentent ce qui se passe au début, pendant ou à la fin du processus</li>
+            <li><strong>Activités</strong> - Représentent les tâches à effectuer dans le processus</li>
+            <li><strong>Passerelles</strong> - Représentent les points de décision dans le processus</li>
+            <li><strong>Flux</strong> - Représentent la séquence des activités ou l'échange de messages</li>
+            <li><strong>Données</strong> - Représentent les informations utilisées ou produites par le processus</li>
+        </ul>
+        <p><strong>Règles de base</strong></p>
+        <ul>
+            <li>Chaque processus doit débuter par un événement de début et se terminer par un événement de fin</li>
+            <li>Les flux de séquence ne peuvent pas traverser les frontières des piscines</li>
+            <li>Les flux de message sont utilisés pour la communication entre piscines</li>
+            <li>Les activités doivent avoir au moins un flux entrant et un flux sortant</li>
+        </ul>
+    </div>
+
+    <!-- Modal pour les propriétés -->
+    <div id="propertiesModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Propriétés</h2>
+                <span class="close-btn">&times;</span>
             </div>
-            <div class="form-group" style="margin-top: 20px;">
-                <h2>Image du diagramme</h2>
-                <button id="export-svg-btn">Exporter en SVG</button>
-                <button id="export-png-btn">Exporter en PNG</button>
-                <div id="image-preview" style="margin-top: 20px; text-align: center;"></div>
+            <div class="modal-body">
+                <!-- Champs dynamiques selon le type d'élément -->
+            </div>
+            <div class="modal-footer">
+                <button id="cancelButton" class="btn btn-secondary">Annuler</button>
+                <button id="saveButton" class="btn btn-primary">Enregistrer</button>
             </div>
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bpmn-js/9.4.1/bpmn-modeler.production.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
