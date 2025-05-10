@@ -26,7 +26,15 @@ function generateInstructions() {
 
     instructions.push("9. **Identifier les points inter-organisationnels**\n   - Tracez les flux de messages entre les piscines pour montrer les échanges entre organisations.");
 
-    instructions.push("10. **Valider votre modèle**\n   - Vérifiez que toutes les étapes, acteurs, décisions et flux sont représentés de façon claire et complète.");
+    instructions.push("10. **Valider votre modèle**\n   - Vérifiez que toutes les étapes, acteurs, décisions et flux sont représentés de façon claire et complète.\n");
+
+    // Analyse spécifique du texte fourni par l'utilisateur
+    instructions.push("\n---\nAnalyse spécifique de votre mise en situation :\n");
+    const sentences = scenarioText.split(/\n|\.|!|\?/).filter(s => s.trim().length > 0);
+
+    sentences.forEach((sentence, index) => {
+        instructions.push(`- Étape ${index + 1} : ${sentence.trim()}`);
+    });
 
     document.getElementById('outputInstructions').innerText = instructions.join('\n\n');
 }
