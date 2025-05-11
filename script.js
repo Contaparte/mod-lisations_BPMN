@@ -91,6 +91,8 @@ function preprocessText(text) {
         .replace(/\s+/g, ' ')  // Normaliser les espaces multiples
         .replace(/\s+([.,;:])/g, '$1')  // Supprimer les espaces avant ponctuation
         .replace(/([.,;:])(?=[^\s])/g, '$1 ')  // Ajouter des espaces après ponctuation
+        .replace(/\(\s*/g, '(')      // Normaliser l'espace après parenthèse ouvrante
+        .replace(/\s*\)/g, ')')      // Normaliser l'espace avant parenthèse fermante
         .trim();
 }
 
@@ -100,11 +102,32 @@ function preprocessText(text) {
  * @return {string[]} - Tableau de phrases
  */
 function splitIntoSentences(text) {
-    return text
-        .replace(/([.!?])[ \t]+(?=[A-Z])/g, "$1|")
-        .split("|")
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
+    // Remplacer les points d'interrogation et d'exclamation par des points pour simplifier
+    const normalizedText = text.replace(/\?|!/g, '.');
+    
+    // Gérer les cas spéciaux comme les abréviations courantes
+    const withPreservedAbbreviations = normalizedText
+        .replace(/M\./g, 'M_ABBR_')
+        .replace(/Mme\./g, 'Mme_ABBR_')
+        .replace(/Dr\./g, 'Dr_ABBR_')
+        .replace(/etc\./g, 'etc_ABBR_')
+        .replace(/ex\./g, 'ex_ABBR_');
+
+    // Diviser par les points suivis d'un espace et d'une majuscule
+    const rawSentences = withPreservedAbbreviations
+        .replace(/\.+\s+(?=[A-Z])/g, '.|')
+        .split('|');
+    
+    // Restaurer les abréviations et nettoyer le résultat
+    return rawSentences
+        .map(sentence => sentence
+            .replace(/M_ABBR_/g, 'M.')
+            .replace(/Mme_ABBR_/g, 'Mme.')
+            .replace(/Dr_ABBR_/g, 'Dr.')
+            .replace(/etc_ABBR_/g, 'etc.')
+            .replace(/ex_ABBR_/g, 'ex.')
+            .trim())
+        .filter(sentence => sentence.length > 0);
 }
 
 /**
@@ -135,64 +158,103 @@ function extractProcessComponents(processedText) {
  */
 function extractActors(text, sentences) {
     const actors = [];
-    // Dictionnaire des acteurs potentiels à rechercher
+    const lowerText = text.toLowerCase();
+    
+    // Dictionnaire des acteurs potentiels à rechercher, en ordre de spécificité
     const potentialActors = [
-        {name: 'préposé aux comptes', pattern: /préposé(?:\s+aux\s+comptes)?/i, isInternal: true},
-        {name: 'gestionnaire', pattern: /gestionnaire|manager|responsable/i, isInternal: true},
-        {name: 'employé', pattern: /employé|salarié|travailleur/i, isInternal: false},
-        {name: 'institution financière', pattern: /institution\s+financière|banque/i, isInternal: false},
-        {name: 'client', pattern: /client|acheteur|consommateur/i, isInternal: false},
-        {name: 'fournisseur', pattern: /fournisseur|prestataire|vendeur/i, isInternal: false},
-        {name: 'système', pattern: /système|système d['']information|application|logiciel/i, isInternal: true},
-        {name: 'service technique', pattern: /service\s+technique|service\s+informatique|support/i, isInternal: true},
-        {name: 'service livraison', pattern: /service\s+livraison|équipe\s+de\s+livraison|livreur/i, isInternal: true},
-        {name: 'agent', pattern: /agent(?:\s+aux\s+soumissions)?|représentant/i, isInternal: true},
-        {name: 'superviseur', pattern: /superviseur|chef\s+d['']équipe/i, isInternal: true},
-        {name: 'agent technique', pattern: /agent\s+technique|technicien/i, isInternal: true},
-        {name: 'comptabilité', pattern: /comptabilité|comptable/i, isInternal: true},
-        {name: 'entrepôt', pattern: /entrepôt|magasin|stockage/i, isInternal: true},
-        {name: 'directeur', pattern: /directeur|direction/i, isInternal: true},
-        {name: 'pharmacien', pattern: /pharmacien|chimiste/i, isInternal: false},
-        {name: 'usine', pattern: /usine|fabrique|manufacture/i, isInternal: false},
-        {name: 'contrôle qualité', pattern: /contrôle\s+qualité|assurance\s+qualité|qualité/i, isInternal: true},
-        {name: 'développeur', pattern: /développeur|programmeur|codeur/i, isInternal: true},
-        {name: 'chef d\'équipe', pattern: /chef\s+d['']équipe|team\s+lead/i, isInternal: true},
-        {name: 'vendeur', pattern: /vendeur|représentant\s+des\s+ventes/i, isInternal: true},
-        {name: 'représentant du service à la clientèle', pattern: /représentant\s+du\s+service\s+à\s+la\s+clientèle|service\s+client/i, isInternal: true}
+        // Acteurs internes
+        {name: 'Préposé aux comptes', pattern: /préposé(?:\s+aux\s+comptes)?/i, isInternal: true},
+        {name: 'Gestionnaire', pattern: /gestionnaire|manager|responsable/i, isInternal: true},
+        {name: 'Employé', pattern: /employé|salarié|travailleur/i, isInternal: false},
+        {name: 'Institution financière', pattern: /institution\s+financière|banque/i, isInternal: false},
+        {name: 'Service livraison', pattern: /service\s+livraison|équipe\s+de\s+livraison|livreur/i, isInternal: true},
+        {name: 'Service technique', pattern: /service\s+technique|service\s+informatique|support/i, isInternal: true},
+        {name: 'Vendeur', pattern: /vendeur|représentant\s+des\s+ventes/i, isInternal: true},
+        {name: 'Représentant du service à la clientèle', pattern: /représentant\s+du\s+service\s+à\s+la\s+clientèle|service\s+client/i, isInternal: true},
+        {name: 'Agent', pattern: /agent(?:\s+aux\s+soumissions)?|représentant/i, isInternal: true},
+        {name: 'Superviseur', pattern: /superviseur|chef\s+d['']équipe/i, isInternal: true},
+        {name: 'Agent technique', pattern: /agent\s+technique|technicien/i, isInternal: true},
+        {name: 'Comptabilité', pattern: /comptabilité|comptable/i, isInternal: true},
+        {name: 'Entrepôt', pattern: /entrepôt|magasin|stockage/i, isInternal: true},
+        {name: 'Chef d\'équipe', pattern: /chef\s+d['']équipe|team\s+lead/i, isInternal: true},
+        {name: 'Contrôle qualité', pattern: /contrôle\s+qualité|assurance\s+qualité|qualité/i, isInternal: true},
+        {name: 'Développeur', pattern: /développeur|programmeur|codeur/i, isInternal: true},
+        
+        // Acteurs externes
+        {name: 'Client', pattern: /client|acheteur|consommateur/i, isInternal: false},
+        {name: 'Fournisseur', pattern: /fournisseur|prestataire|vendeur/i, isInternal: false},
+        {name: 'Pharmacien', pattern: /pharmacien|chimiste/i, isInternal: false},
+        {name: 'Usine', pattern: /usine|fabrique|manufacture/i, isInternal: false}
     ];
     
-    // Détecter les acteurs dans le texte
+    // Rechercher des mentions explicites de participants
+    const participantPattern = /(?:participant|acteur|impliqué)s?\s+(?:interne|externe)s?\s*:\s*([^.]+)/ig;
+    let participantMatch;
+    while ((participantMatch = participantPattern.exec(text)) !== null) {
+        const participantsText = participantMatch[1];
+        const participantsList = participantsText.split(/(?:,|et)\s+/);
+        
+        participantsList.forEach(participant => {
+            const trimmedParticipant = participant.trim();
+            if (trimmedParticipant) {
+                const isInternal = participantMatch[0].toLowerCase().includes('interne');
+                actors.push({
+                    name: capitalizeFirstLetter(trimmedParticipant),
+                    pattern: new RegExp(trimmedParticipant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+                    isInternal: isInternal,
+                    hasActivities: true,
+                    isPrimaryMention: true
+                });
+            }
+        });
+    }
+    
+    // Détecter les acteurs spécifiques dans le texte
     potentialActors.forEach(potentialActor => {
-        if (text.match(potentialActor.pattern)) {
+        if (lowerText.match(potentialActor.pattern) && 
+            !actors.some(a => a.name.toLowerCase() === potentialActor.name.toLowerCase())) {
             // Rechercher les activités liées à cet acteur
             const hasActivities = sentences.some(sentence => 
-                sentence.match(potentialActor.pattern) && 
-                /\b(vérifie|crée|saisit|envoie|reçoit|traite|analyse|approuve|rejette|valide)\b/i.test(sentence)
+                sentence.toLowerCase().match(potentialActor.pattern) && 
+                /\b(vérifie|crée|saisit|envoie|reçoit|traite|analyse|approuve|rejette|valide|examine|gère|communique)\b/i.test(sentence)
             );
             
             actors.push({
                 name: capitalizeFirstLetter(potentialActor.name),
                 pattern: potentialActor.pattern,
                 isInternal: potentialActor.isInternal,
-                hasActivities: hasActivities
+                hasActivities: hasActivities,
+                isPrimaryMention: false
             });
         }
     });
+    
+    // Cas spécial pour le système, souvent utilisé mais pas toujours mentionné comme acteur
+    if (lowerText.includes('système') && 
+        !actors.some(a => a.name.toLowerCase() === 'système')) {
+        actors.push({
+            name: 'Système',
+            pattern: /système|application|logiciel|pgi|erp/i,
+            isInternal: true,
+            hasActivities: lowerText.match(/\ble\s+système\s+(génère|calcule|envoie|traite|valide)/i) !== null,
+            isPrimaryMention: false
+        });
+    }
 
     // Affiner la détection des acteurs internes/externes
     actors.forEach(actor => {
         // Si l'acteur est mentionné comme externe, le marquer comme tel
         if (sentences.some(s => 
-            actor.pattern.test(s) && 
-            (s.includes('externe') || s.includes('partenaire')))) {
+            actor.pattern.test(s.toLowerCase()) && 
+            (s.toLowerCase().includes('externe') || s.toLowerCase().includes('partenaire')))) {
             actor.isInternal = false;
         }
         
         // Si l'acteur est mentionné comme interne, le marquer comme tel
         if (sentences.some(s => 
-            actor.pattern.test(s) && 
-            (s.includes('interne') || s.includes('de l\'entreprise') || 
-             s.includes('de la société') || s.includes('employé')))) {
+            actor.pattern.test(s.toLowerCase()) && 
+            (s.toLowerCase().includes('interne') || s.toLowerCase().includes('de l\'entreprise') || 
+             s.toLowerCase().includes('de la société') || s.toLowerCase().includes('notre')))) {
             actor.isInternal = true;
         }
     });
@@ -203,7 +265,8 @@ function extractActors(text, sentences) {
             name: 'Système',
             pattern: /système/i,
             isInternal: true,
-            hasActivities: true
+            hasActivities: true,
+            isPrimaryMention: false
         });
     }
     
@@ -212,9 +275,18 @@ function extractActors(text, sentences) {
             name: 'Client',
             pattern: /client/i,
             isInternal: false,
-            hasActivities: false
+            hasActivities: false,
+            isPrimaryMention: false
         });
     }
+    
+    // Détermine quels acteurs devraient avoir leur propre couloir
+    actors.forEach(actor => {
+        // Un acteur devrait avoir son propre couloir s'il:
+        // 1. Est interne ET
+        // 2. A des activités OU est mentionné explicitement comme participant
+        actor.requiresLane = actor.isInternal && (actor.hasActivities || actor.isPrimaryMention);
+    });
     
     return actors;
 }
@@ -227,6 +299,7 @@ function extractActors(text, sentences) {
  */
 function extractActivities(sentences, fullText) {
     const activities = [];
+    const lowerFullText = fullText.toLowerCase();
     
     // Mots-clés pour identifier les activités
     const actionKeywords = [
@@ -235,12 +308,18 @@ function extractActivities(sentences, fullText) {
         'prépare', 'génère', 'imprime', 'enregistre', 'classe', 'stocke',
         'expédie', 'livre', 'exécute', 'calcule', 'compare', 'examine',
         'programme', 'rédige', 'documente', 'teste', 'identifie', 'évalue',
-        'autorise', 'informe', 'présente', 'collecte', 'transmet', 'instancie'
+        'autorise', 'informe', 'présente', 'collecte', 'transmet', 'instancie',
+        'confirme', 'transmets', 'annule', 'décide', 'détermine', 'met à jour'
     ];
     
-    sentences.forEach((sentence, index) => {
+    // Extraire les activités selon deux approches
+    
+    // 1. Approche séquentielle: parcourir les phrases en ordre pour identifier le flux de travail
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        
         // Ignorer les phrases trop courtes ou qui ne décrivent pas d'actions
-        if (sentence.length < 10 || isConnectorSentence(sentence)) return;
+        if (sentence.length < 10 || isConnectorSentence(sentence)) continue;
         
         // Détecter si la phrase décrit une activité
         const containsActionKeyword = actionKeywords.some(keyword => 
@@ -252,28 +331,169 @@ function extractActivities(sentences, fullText) {
             const responsibleActor = identifyActorForActivity(sentence, fullText);
             
             // Identifier le type d'activité
-            const activityType = identifyActivityType(sentence);
+            const activityType = identifyActivityType(sentence, lowerFullText);
             
             // Extraire le nom de l'activité
             const activityName = extractActivityName(sentence);
             
+            // Déterminer si cette activité dépend d'une condition
+            const dependsOnCondition = i > 0 && 
+                (sentences[i-1].toLowerCase().includes('si ') || 
+                 sentence.toLowerCase().includes('sinon') || 
+                 sentence.toLowerCase().match(/^(dans\s+le\s+cas\s+(où|ou)|lorsque)/i));
+            
+            // Détecter les relations de dépendance avec d'autres activités
+            const previousActivity = activities.length > 0 ? 
+                activities[activities.length - 1] : null;
+            
+            // Initialiser les propriétés de dépendance
+            let dependsOn = null;
+            let isBranchActivity = false;
+            
+            // Vérifier si cette activité est une branche d'une condition
+            if (dependsOnCondition && previousActivity) {
+                if (previousActivity.dependsOnCondition) {
+                    // C'est une activité parallèle dans une autre branche
+                    dependsOn = previousActivity.dependsOn;
+                    isBranchActivity = true;
+                } else {
+                    // C'est une activité qui dépend de la condition précédente
+                    dependsOn = previousActivity.id;
+                }
+            }
+            
+            // Ajouter l'activité
             activities.push({
+                id: `a${activities.length + 1}`,
                 name: activityName,
                 description: sentence,
                 type: activityType,
                 actor: responsibleActor,
-                position: index,
-                hasDataInteraction: sentence.includes('système') || 
-                                   sentence.includes('base de données') ||
-                                   sentence.includes('document') ||
-                                   sentence.includes('rapport') ||
-                                   sentence.includes('fichier') ||
-                                   sentence.includes('formulaire')
+                position: i,
+                hasDataInteraction: sentence.toLowerCase().includes('système') || 
+                                   sentence.toLowerCase().includes('base de données') ||
+                                   sentence.toLowerCase().includes('document') ||
+                                   sentence.toLowerCase().includes('rapport') ||
+                                   sentence.toLowerCase().includes('fichier') ||
+                                   sentence.toLowerCase().includes('formulaire'),
+                dependsOnCondition: dependsOnCondition,
+                dependsOn: dependsOn,
+                isBranchActivity: isBranchActivity
             });
+        }
+    }
+    
+    // 2. Approche par mots-clés: rechercher des motifs spécifiques d'activités
+    const activityPatterns = [
+        {
+            pattern: /v[ée]rifi(e|er)\s+si\s+([^.]+)/i,
+            type: 'utilisateur',
+            nameTemplate: 'Vérifier $1'
+        },
+        {
+            pattern: /cr[ée]{1,2}(r|e)\s+([^.]+)\s+dans\s+(le|la|les)\s+syst[èe]me/i,
+            type: 'utilisateur',
+            nameTemplate: 'Créer $1'
+        },
+        {
+            pattern: /saisi(r|t)\s+([^.]+)\s+dans\s+(le|la|les)\s+syst[èe]me/i,
+            type: 'utilisateur',
+            nameTemplate: 'Saisir $1'
+        },
+        {
+            pattern: /approuv(e|er)\s+([^.,]+)/i,
+            type: 'utilisateur',
+            nameTemplate: 'Approuver $1'
+        },
+        {
+            pattern: /communiqu(e|er)\s+(avec|à)\s+([^.,]+)/i,
+            type: 'manuelle',
+            nameTemplate: 'Communiquer avec $2'
+        }
+    ];
+    
+    // Parcourir à nouveau les phrases pour capturer les activités basées sur des motifs spécifiques
+    sentences.forEach((sentence, index) => {
+        activityPatterns.forEach(patternObj => {
+            const matches = sentence.match(patternObj.pattern);
+            if (matches) {
+                // Vérifier si cette activité n'a pas déjà été capturée
+                const activityName = patternObj.nameTemplate.replace('$1', matches[2] || '')
+                                                           .replace('$2', matches[3] || '');
+                
+                if (!activities.some(a => areStringSimilar(a.name, activityName))) {
+                    // Identifier l'acteur responsable
+                    const responsibleActor = identifyActorForActivity(sentence, fullText);
+                    
+                    activities.push({
+                        id: `a${activities.length + 1}`,
+                        name: activityName,
+                        description: sentence,
+                        type: patternObj.type,
+                        actor: responsibleActor,
+                        position: index,
+                        hasDataInteraction: patternObj.type === 'utilisateur',
+                        dependsOnCondition: false,
+                        dependsOn: null,
+                        isBranchActivity: false
+                    });
+                }
+            }
+        });
+    });
+    
+    // Identifier et marquer les activités de validation/approbation
+    activities.forEach(activity => {
+        if (activity.name.toLowerCase().includes('valide') || 
+            activity.name.toLowerCase().includes('approuve') ||
+            activity.name.toLowerCase().includes('vérifie')) {
+            activity.isApproval = true;
+        }
+    });
+    
+    // Détecter et marquer les activités de fin (qui mettent fin au processus)
+    activities.forEach(activity => {
+        if (activity.description.toLowerCase().includes('met fin') || 
+            activity.description.toLowerCase().includes('termine le processus') ||
+            activity.description.toLowerCase().includes('fin du processus')) {
+            activity.isEndActivity = true;
         }
     });
     
     return activities;
+}
+
+/**
+ * Compare deux chaînes pour déterminer si elles sont similaires
+ * @param {string} str1 - Première chaîne
+ * @param {string} str2 - Deuxième chaîne
+ * @return {boolean} - Vrai si les chaînes sont similaires
+ */
+function areStringSimilar(str1, str2) {
+    if (!str1 || !str2) return false;
+    
+    // Normaliser les chaînes (minuscules, sans ponctuation)
+    const normalize = s => s.toLowerCase().replace(/[.,;:!?]/g, '').trim();
+    const norm1 = normalize(str1);
+    const norm2 = normalize(str2);
+    
+    // Si une chaîne contient l'autre, elles sont similaires
+    if (norm1.includes(norm2) || norm2.includes(norm1)) return true;
+    
+    // Compter les mots communs
+    const words1 = norm1.split(/\s+/);
+    const words2 = norm2.split(/\s+/);
+    
+    let commonWords = 0;
+    words1.forEach(word => {
+        if (words2.includes(word) && word.length > 3) {
+            commonWords++;
+        }
+    });
+    
+    // Si plus de 50% des mots sont communs, les chaînes sont similaires
+    const similarityThreshold = Math.min(words1.length, words2.length) * 0.5;
+    return commonWords >= similarityThreshold;
 }
 
 /**
@@ -291,7 +511,9 @@ function isConnectorSentence(sentence) {
     
     const lowerSentence = sentence.toLowerCase();
     return connectorPhrases.some(phrase => lowerSentence.startsWith(phrase)) ||
-           lowerSentence.length < 15; // Phrases très courtes sont souvent des transitions
+           lowerSentence.length < 15 || // Phrases très courtes sont souvent des transitions
+           lowerSentence.includes('le processus commence') || 
+           lowerSentence.includes('le processus débute');
 }
 
 /**
@@ -302,58 +524,123 @@ function isConnectorSentence(sentence) {
  */
 function identifyActorForActivity(sentence, fullText) {
     const actorKeywords = {
-        'préposé aux comptes': ['préposé aux comptes', 'préposé', 'comptable'],
-        'gestionnaire': ['gestionnaire', 'manager', 'responsable'],
-        'employé': ['employé', 'salarié', 'travailleur'],
-        'système': ['système', 'application', 'logiciel', 'automatiquement'],
-        'client': ['client', 'acheteur', 'consommateur'],
-        'agent': ['agent', 'représentant'],
-        'superviseur': ['superviseur', 'chef d\'équipe'],
-        'agent technique': ['agent technique', 'technicien'],
-        'comptabilité': ['comptabilité'],
-        'service livraison': ['service livraison', 'livreur'],
-        'entrepôt': ['entrepôt', 'magasin', 'stockage'],
-        'représentant du service à la clientèle': ['représentant du service à la clientèle', 'service client'],
-        'développeur': ['développeur', 'programmeur', 'codeur'],
-        'contrôle qualité': ['contrôle qualité', 'assurance qualité', 'qualité'],
-        'pharmacien': ['pharmacien', 'chimiste']
+        'Préposé aux comptes': ['préposé aux comptes', 'préposé', 'comptable'],
+        'Gestionnaire': ['gestionnaire', 'manager', 'responsable', 'chef d\'équipe'],
+        'Employé': ['employé', 'salarié', 'travailleur'],
+        'Institution financière': ['institution financière', 'banque', 'établissement bancaire'],
+        'Système': ['système', 'application', 'logiciel', 'pgi', 'erp', 'automatiquement', 'algorithme'],
+        'Client': ['client', 'acheteur', 'consommateur', 'utilisateur'],
+        'Agent': ['agent', 'représentant', 'technicien'],
+        'Superviseur': ['superviseur', 'chef d\'équipe', 'supérieur hiérarchique'],
+        'Comptabilité': ['comptabilité', 'service comptable', 'département financier'],
+        'Service livraison': ['service livraison', 'livreur', 'livraison'],
+        'Entrepôt': ['entrepôt', 'magasin', 'stockage', 'préposé à l\'entrepôt'],
+        'Représentant du service à la clientèle': ['représentant du service à la clientèle', 'service client', 'conseiller'],
+        'Développeur': ['développeur', 'programmeur', 'codeur'],
+        'Contrôle qualité': ['contrôle qualité', 'assurance qualité', 'qualité'],
+        'Pharmacien': ['pharmacien', 'chimiste', 'préparateur']
     };
     
-    // Rechercher les mentions explicites d'acteurs dans la phrase
+    const lowerSentence = sentence.toLowerCase();
+    
+    // 1. Rechercher des mentions explicites du sujet de la phrase
     for (const [actor, keywords] of Object.entries(actorKeywords)) {
         for (const keyword of keywords) {
-            if (sentence.toLowerCase().includes(keyword.toLowerCase())) {
-                return capitalizeFirstLetter(actor);
+            // Vérifier si le mot-clé est le sujet d'un verbe d'action
+            const subjectPattern = new RegExp(`(le\\s+|la\\s+|les\\s+|un\\s+|une\\s+)?${keyword}\\s+(qui\\s+)?\\b(vérifie|crée|saisit|envoie|reçoit|traite|analyse|approuve|rejette|valide|examine)\\b`, 'i');
+            if (lowerSentence.match(subjectPattern)) {
+                return actor;
+            }
+            
+            // Vérifier si le mot-clé est mentionné au début de la phrase
+            const startPattern = new RegExp(`^(le\\s+|la\\s+|les\\s+|un\\s+|une\\s+)?${keyword}\\b`, 'i');
+            if (lowerSentence.match(startPattern)) {
+                return actor;
             }
         }
     }
     
-    // Si aucun acteur n'est mentionné dans la phrase, analyser le contexte
+    // 2. Détecter les constructions passives
+    const passiveVerbPattern = /est\s+(vérifié|créé|saisi|envoyé|reçu|traité|analysé|approuvé|rejeté|validé|examiné)\s+par\s+(le|la|les|un|une)\s+([a-zéèêàçùïëâîôû-]+)/i;
+    const passiveMatch = lowerSentence.match(passiveVerbPattern);
+    if (passiveMatch) {
+        const actorMentioned = passiveMatch[3];
+        for (const [actor, keywords] of Object.entries(actorKeywords)) {
+            if (keywords.some(k => k.toLowerCase().includes(actorMentioned))) {
+                return actor;
+            }
+        }
+    }
+    
+    // 3. Analyser le contexte autour de la phrase
     const sentenceIndex = fullText.indexOf(sentence);
-    const contextBefore = fullText.substring(Math.max(0, sentenceIndex - 200), sentenceIndex);
+    const contextBefore = fullText.substring(Math.max(0, sentenceIndex - 300), sentenceIndex);
     
-    // Chercher l'acteur mentionné le plus récemment dans le contexte
+    // Rechercher des mentions explicites d'acteurs dans le contexte récent
     for (const [actor, keywords] of Object.entries(actorKeywords)) {
         for (const keyword of keywords) {
-            if (contextBefore.toLowerCase().includes(keyword.toLowerCase())) {
-                return capitalizeFirstLetter(actor);
+            const actorMentionPattern = new RegExp(`${keyword}[^.]*\\.(\\s|$)`, 'i');
+            if (contextBefore.match(actorMentionPattern)) {
+                return actor;
             }
         }
     }
     
-    // Acteur par défaut si aucun n'est identifié
+    // 4. Déterminer l'acteur par inférence basée sur l'action
+    if (lowerSentence.includes('système génère') || 
+        lowerSentence.includes('système calcule') || 
+        lowerSentence.includes('système valide') ||
+        lowerSentence.includes('automatiquement')) {
+        return 'Système';
+    }
+    
+    if (lowerSentence.includes('vérifier si') || 
+        lowerSentence.includes('vérifier le') || 
+        lowerSentence.includes('approuver') || 
+        lowerSentence.includes('valider')) {
+        // Les activités de vérification/approbation sont souvent faites par le gestionnaire
+        return 'Gestionnaire';
+    }
+    
+    if (lowerSentence.includes('saisir') || 
+        lowerSentence.includes('créer') || 
+        lowerSentence.includes('remplir') ||
+        lowerSentence.includes('formulaire')) {
+        // Les activités de saisie sont souvent faites par le préposé
+        return 'Préposé aux comptes';
+    }
+    
+    if (lowerSentence.includes('préparer') || 
+        lowerSentence.includes('emballer') || 
+        lowerSentence.includes('livrer')) {
+        return 'Service livraison';
+    }
+    
+    // 5. Acteur par défaut selon le contexte global du texte
+    if (fullText.toLowerCase().includes('remboursement') || 
+        fullText.toLowerCase().includes('dépense')) {
+        return 'Préposé aux comptes';
+    }
+    
+    if (fullText.toLowerCase().includes('commande') || 
+        fullText.toLowerCase().includes('achat')) {
+        return 'Préposé aux comptes';
+    }
+    
+    // Acteur par défaut si aucun n'est identifié avec certitude
     return 'Système';
 }
 
 /**
  * Identifie le type d'activité
  * @param {string} sentence - Phrase décrivant l'activité
+ * @param {string} fullText - Texte complet du scénario en minuscules
  * @return {string} - Type d'activité
  */
-function identifyActivityType(sentence) {
+function identifyActivityType(sentence, fullText) {
     const lowerSentence = sentence.toLowerCase();
     
-    // Service (automatique)
+    // Système (Service)
     if (lowerSentence.includes('automatiquement') || 
         lowerSentence.includes('le système génère') ||
         lowerSentence.includes('est généré par') ||
@@ -364,17 +651,6 @@ function identifyActivityType(sentence) {
         lowerSentence.includes('le système valide') ||
         lowerSentence.includes('le système exécute')) {
         return 'service';
-    }
-    
-    // Manuelle (sans système)
-    if (lowerSentence.includes('manuellement') || 
-        lowerSentence.includes('papier') ||
-        lowerSentence.includes('physiquement') ||
-        lowerSentence.includes('classe') && lowerSentence.includes('document') ||
-        lowerSentence.includes('classe') && lowerSentence.includes('dossier') ||
-        lowerSentence.includes('imprime') && !lowerSentence.includes('système') ||
-        (lowerSentence.includes('photocopie') && !lowerSentence.includes('système'))) {
-        return 'manuelle';
     }
     
     // Utilisateur (interaction humain-système)
@@ -388,14 +664,55 @@ function identifyActivityType(sentence) {
         return 'utilisateur';
     }
     
+    // Détection spécifique basée sur les verbes et les contextes
+    if (lowerSentence.includes('vérifie') || lowerSentence.includes('vérifier')) {
+        if (lowerSentence.includes('base de données') || 
+            lowerSentence.includes('système') || 
+            lowerSentence.includes('application')) {
+            return 'utilisateur';
+        }
+    }
+    
+    if (lowerSentence.includes('crée') || lowerSentence.includes('créer')) {
+        if (lowerSentence.includes('base de données') || 
+            lowerSentence.includes('système') || 
+            lowerSentence.includes('application')) {
+            return 'utilisateur';
+        }
+    }
+    
+    // Vérifier le contexte global du texte
+    if ((lowerSentence.includes('vérifie') || lowerSentence.includes('vérifier')) &&
+        (fullText.includes('base de données') || fullText.includes('système d\'information'))) {
+        return 'utilisateur';
+    }
+    
+    // Manuelle (sans système)
+    if (lowerSentence.includes('manuellement') || 
+        lowerSentence.includes('papier') ||
+        lowerSentence.includes('physiquement') ||
+        lowerSentence.includes('classe') && lowerSentence.includes('document') ||
+        lowerSentence.includes('classe') && lowerSentence.includes('dossier') ||
+        lowerSentence.includes('communique avec') ||
+        lowerSentence.includes('contacte') ||
+        lowerSentence.includes('appelle') ||
+        lowerSentence.includes('imprime') && !lowerSentence.includes('système') ||
+        (lowerSentence.includes('photocopie') && !lowerSentence.includes('système'))) {
+        return 'manuelle';
+    }
+    
     // Par défaut: détecter d'après le contexte
-    if (lowerSentence.includes('système') || lowerSentence.includes('logiciel') || 
-        lowerSentence.includes('application') || lowerSentence.includes('base de données') ||
-        lowerSentence.includes('pgi') || lowerSentence.includes('erp') ||
+    if (lowerSentence.includes('système') || 
+        lowerSentence.includes('logiciel') || 
+        lowerSentence.includes('application') || 
+        lowerSentence.includes('base de données') ||
+        lowerSentence.includes('pgi') || 
+        lowerSentence.includes('erp') ||
         lowerSentence.includes('dans le si')) {
         return 'utilisateur';
     }
     
+    // Par défaut
     return 'manuelle';
 }
 
@@ -405,14 +722,15 @@ function identifyActivityType(sentence) {
  * @return {string} - Nom de l'activité
  */
 function extractActivityName(sentence) {
-    // Identifier le verbe principal
+    // Identifier le verbe principal et l'objet
     const actionVerbs = [
         'vérifie', 'crée', 'saisit', 'envoie', 'reçoit', 'traite', 'analyse', 
         'approuve', 'rejette', 'transfère', 'communique', 'consulte', 'valide',
         'prépare', 'génère', 'imprime', 'enregistre', 'classe', 'stocke',
         'expédie', 'livre', 'exécute', 'calcule', 'compare', 'examine',
         'programme', 'rédige', 'documente', 'teste', 'identifie', 'évalue',
-        'autorise', 'informe', 'présente', 'collecte', 'transmet', 'instancie'
+        'autorise', 'informe', 'présente', 'collecte', 'transmet', 'instancie',
+        'avise', 'notifie', 'annule', 'met à jour', 'confirme', 'modifie'
     ];
     
     // Convertir les verbes du texte au mode infinitif pour le nom
@@ -453,9 +771,32 @@ function extractActivityName(sentence) {
         'présente': 'Présenter',
         'collecte': 'Collecter',
         'transmet': 'Transmettre',
-        'instancie': 'Instancier'
+        'instancie': 'Instancier',
+        'avise': 'Aviser',
+        'notifie': 'Notifier',
+        'annule': 'Annuler',
+        'met à jour': 'Mettre à jour',
+        'confirme': 'Confirmer',
+        'modifie': 'Modifier'
     };
     
+    // Rechercher des modèles spécifiques d'abord
+    
+    // Modèle "vérifier si" commun dans BPMN
+    const verifierSiPattern = /(vérifie|vérifier)\s+si\s+([^.,;:]+)/i;
+    const verifierSiMatch = sentence.match(verifierSiPattern);
+    if (verifierSiMatch) {
+        return 'Vérifier si ' + verifierSiMatch[2].trim();
+    }
+    
+    // Modèle "communiquer avec/à"
+    const communiquerPattern = /(communique|communiquer)\s+(avec|à)\s+([^.,;:]+)/i;
+    const communiquerMatch = sentence.match(communiquerPattern);
+    if (communiquerMatch) {
+        return 'Communiquer avec ' + communiquerMatch[3].trim();
+    }
+    
+    // Recherche standard par verbe d'action
     const lowerSentence = sentence.toLowerCase();
     let actionVerb = null;
     
@@ -502,29 +843,206 @@ function extractActivityName(sentence) {
 function extractDecisions(sentences, fullText) {
     const decisions = [];
     
-    sentences.forEach((sentence, index) => {
+    // Extraire les décisions basées sur des conditions "si..."
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        const lowerSentence = sentence.toLowerCase();
+        
         // Rechercher les phrases conditionnelles "si..."
-        if (sentence.toLowerCase().includes(' si ')) {
+        if (lowerSentence.includes(' si ') || 
+            lowerSentence.match(/^\s*si\s+/i)) {
+            
             const condition = extractCondition(sentence);
             
             if (condition) {
                 // Déterminer les conséquences positives et négatives
-                const positiveOutcome = extractPositiveOutcome(sentence, sentences, index);
-                const negativeOutcome = extractNegativeOutcome(sentence, sentences, index);
+                const positiveOutcome = extractPositiveOutcome(sentence, sentences, i);
+                const negativeOutcome = extractNegativeOutcome(sentence, sentences, i);
                 
                 decisions.push({
+                    id: `g${decisions.length + 1}`,
                     condition: condition,
                     question: convertConditionToQuestion(condition),
                     positiveOutcome: positiveOutcome,
                     negativeOutcome: negativeOutcome,
-                    position: index,
+                    position: i,
                     actor: identifyActorForDecision(sentence, fullText)
                 });
             }
         }
-    });
+        
+        // Rechercher les clauses "sinon" séparées
+        if (lowerSentence.startsWith('sinon') || 
+            lowerSentence.startsWith('dans le cas contraire')) {
+            
+            // Trouver la décision précédente
+            const previousDecision = decisions.length > 0 ? 
+                decisions[decisions.length - 1] : null;
+            
+            if (previousDecision && !previousDecision.negativeOutcome) {
+                previousDecision.negativeOutcome = sentence;
+            }
+        }
+    }
+    
+    // Extraire les décisions basées sur des constructions spécifiques
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        const lowerSentence = sentence.toLowerCase();
+        
+        // Détecter les décisions basées sur des montants
+        const montantPattern = /si\s+le\s+montant\s+(est|dépasse|excède|est supérieur à|est inférieur à|est égal à)\s+([0-9]+[$€])/i;
+        const montantMatch = lowerSentence.match(montantPattern);
+        
+        if (montantMatch && !decisions.some(d => d.position === i)) {
+            const comparator = montantMatch[1].toLowerCase();
+            const amount = montantMatch[2].replace(/[$€]/, '');
+            
+            let question = '';
+            if (comparator === 'est supérieur à' || comparator === 'dépasse' || comparator === 'excède') {
+                question = `Montant > ${amount}$ ?`;
+            } else if (comparator === 'est inférieur à') {
+                question = `Montant < ${amount}$ ?`;
+            } else if (comparator === 'est égal à') {
+                question = `Montant = ${amount}$ ?`;
+            } else {
+                question = `Montant ${amount}$ ?`;
+            }
+            
+            decisions.push({
+                id: `g${decisions.length + 1}`,
+                condition: montantMatch[0],
+                question: question,
+                positiveOutcome: extractPositiveOutcome(sentence, sentences, i),
+                negativeOutcome: extractNegativeOutcome(sentence, sentences, i),
+                position: i,
+                actor: identifyActorForDecision(sentence, fullText)
+            });
+        }
+        
+        // Détecter les décisions basées sur l'existence
+        const existsPattern = /(si|lorsque)\s+(le|la|l['']|les)\s+([^\s]+)\s+(existe|n['']existe pas|est présent|n['']est pas présent)/i;
+        const existsMatch = lowerSentence.match(existsPattern);
+        
+        if (existsMatch && !decisions.some(d => d.position === i)) {
+            const entity = existsMatch[3];
+            const exists = !existsMatch[4].includes('pas');
+            
+            const question = exists ? 
+                `${capitalizeFirstLetter(entity)} existe ?` : 
+                `${capitalizeFirstLetter(entity)} n'existe pas ?`;
+            
+            decisions.push({
+                id: `g${decisions.length + 1}`,
+                condition: existsMatch[0],
+                question: question,
+                positiveOutcome: extractPositiveOutcome(sentence, sentences, i),
+                negativeOutcome: extractNegativeOutcome(sentence, sentences, i),
+                position: i,
+                actor: identifyActorForDecision(sentence, fullText)
+            });
+        }
+        
+        // Détecter les décisions basées sur l'approbation
+        const approvalPattern = /(si|lorsque)\s+(le|la|l['']|les)\s+([^\s]+)\s+(est|sont)\s+(approuvé|validé|confirmé|accepté)/i;
+        const approvalMatch = lowerSentence.match(approvalPattern);
+        
+        if (approvalMatch && !decisions.some(d => d.position === i)) {
+            const entity = approvalMatch[3];
+            
+            decisions.push({
+                id: `g${decisions.length + 1}`,
+                condition: approvalMatch[0],
+                question: `${capitalizeFirstLetter(entity)} approuvé ?`,
+                positiveOutcome: extractPositiveOutcome(sentence, sentences, i),
+                negativeOutcome: extractNegativeOutcome(sentence, sentences, i),
+                position: i,
+                actor: identifyActorForDecision(sentence, fullText)
+            });
+        }
+    }
+    
+    // Identifier les passerelles de convergence
+    identifyConvergenceGateways(decisions, sentences);
     
     return decisions;
+}
+
+/**
+ * Identifie les passerelles de convergence
+ * @param {Object[]} decisions - Décisions identifiées
+ * @param {string[]} sentences - Phrases du scénario
+ */
+function identifyConvergenceGateways(decisions, sentences) {
+    // Analyse du texte pour trouver des indications de convergence
+    const convergenceKeywords = [
+        'dans tous les cas',
+        'quelle que soit la décision',
+        'indépendamment du résultat',
+        'une fois la vérification terminée',
+        'après la validation',
+        'ensuite',
+        'puis',
+        'finalement'
+    ];
+    
+    // Identifier les points de convergence potentiels
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i].toLowerCase();
+        
+        // Vérifier si la phrase contient un mot-clé de convergence
+        const hasConvergenceKeyword = convergenceKeywords.some(keyword => 
+            sentence.includes(keyword)
+        );
+        
+        if (hasConvergenceKeyword) {
+            // Trouver une décision antérieure récente
+            const recentDecisions = decisions.filter(d => d.position < i && i - d.position <= 3);
+            
+            if (recentDecisions.length > 0) {
+                // Ajouter une passerelle de convergence
+                decisions.push({
+                    id: `g${decisions.length + 1}`,
+                    isConvergence: true,
+                    position: i,
+                    actor: recentDecisions[0].actor // Même acteur que la décision précédente
+                });
+            }
+        }
+    }
+    
+    // Identifier les points où plusieurs chemins peuvent converger
+    decisions.forEach(decision => {
+        if (decision.positiveOutcome && decision.negativeOutcome) {
+            // Vérifier si les deux branches mènent au même type d'activité
+            const positiveLower = decision.positiveOutcome.toLowerCase();
+            const negativeLower = decision.negativeOutcome.toLowerCase();
+            
+            const commonActivityTypes = [
+                {type: 'approuver', keywords: ['approuve', 'valide', 'confirme']},
+                {type: 'envoyer', keywords: ['envoie', 'transmet', 'communique']},
+                {type: 'saisir', keywords: ['saisit', 'enregistre', 'entre']},
+                {type: 'vérifier', keywords: ['vérifie', 'contrôle', 'examine']}
+            ];
+            
+            for (const activityType of commonActivityTypes) {
+                const positiveHasType = activityType.keywords.some(k => positiveLower.includes(k));
+                const negativeHasType = activityType.keywords.some(k => negativeLower.includes(k));
+                
+                // Si les deux branches ont le même type d'activité, c'est un signe de convergence
+                if (positiveHasType && negativeHasType) {
+                    // Ajouter une passerelle de convergence après ces activités
+                    decisions.push({
+                        id: `g${decisions.length + 1}`,
+                        isConvergence: true,
+                        position: decision.position + 2, // Approximation
+                        actor: decision.actor
+                    });
+                    break;
+                }
+            }
+        }
+    });
 }
 
 /**
@@ -534,7 +1052,46 @@ function extractDecisions(sentences, fullText) {
  * @return {string} - Nom de l'acteur
  */
 function identifyActorForDecision(sentence, fullText) {
-    return identifyActorForActivity(sentence, fullText); // Même logique
+    // Les décisions sont souvent prises par le même acteur que l'activité qui précède
+    const sentenceIndex = fullText.indexOf(sentence);
+    const contextBefore = fullText.substring(Math.max(0, sentenceIndex - 200), sentenceIndex);
+    
+    // Chercher l'acteur mentionné le plus récemment dans le contexte
+    const actorKeywords = {
+        'Préposé aux comptes': ['préposé aux comptes', 'préposé', 'comptable'],
+        'Gestionnaire': ['gestionnaire', 'manager', 'responsable'],
+        'Système': ['système', 'application', 'logiciel']
+    };
+    
+    for (const [actor, keywords] of Object.entries(actorKeywords)) {
+        for (const keyword of keywords) {
+            if (contextBefore.toLowerCase().includes(keyword.toLowerCase())) {
+                return actor;
+            }
+        }
+    }
+    
+    // Par défaut, les décisions relatives aux montants sont souvent prises par les gestionnaires
+    if (sentence.toLowerCase().includes('montant') || 
+        sentence.toLowerCase().includes('seuil') || 
+        sentence.toLowerCase().includes('valeur')) {
+        return 'Gestionnaire';
+    }
+    
+    // Les décisions concernant les vérifications sont souvent prises par le préposé
+    if (sentence.toLowerCase().includes('vérifie') || 
+        sentence.toLowerCase().includes('existe')) {
+        return 'Préposé aux comptes';
+    }
+    
+    // Les décisions automatiques sont prises par le système
+    if (sentence.toLowerCase().includes('automatiquement') || 
+        sentence.toLowerCase().includes('système')) {
+        return 'Système';
+    }
+    
+    // Si aucun acteur spécifique n'est identifié, utiliser un acteur par défaut selon le contexte
+    return 'Gestionnaire'; // Par défaut, les décisions sont souvent prises par les gestionnaires
 }
 
 /**
@@ -543,16 +1100,40 @@ function identifyActorForDecision(sentence, fullText) {
  * @return {string} - Condition extraite
  */
 function extractCondition(sentence) {
-    const siIndex = sentence.toLowerCase().indexOf(' si ');
-    if (siIndex === -1) return '';
+    const lowerSentence = sentence.toLowerCase();
     
-    // Extraire la partie après "si"
-    let condition = sentence.substring(siIndex + 4);
+    // Rechercher "si..." au début de la phrase
+    if (lowerSentence.match(/^\s*si\s+/i)) {
+        let condition = sentence.substring(sentence.toLowerCase().indexOf('si') + 2);
+        // Couper à la virgule, point ou autre marqueur
+        condition = condition.split(/[,.:;]|\s+alors\s+/)[0].trim();
+        return condition;
+    }
     
-    // Couper à la virgule, point ou autre marqueur
-    condition = condition.split(/[,.:;]|\s+alors\s+/)[0].trim();
+    // Rechercher "si..." en milieu de phrase
+    const siIndex = lowerSentence.indexOf(' si ');
+    if (siIndex !== -1) {
+        let condition = sentence.substring(siIndex + 4);
+        // Couper à la virgule, point ou autre marqueur
+        condition = condition.split(/[,.:;]|\s+alors\s+/)[0].trim();
+        return condition;
+    }
     
-    return condition;
+    // Rechercher "lorsque..." ou "quand..."
+    const lorsqueIndex = Math.max(
+        lowerSentence.indexOf(' lorsque '), 
+        lowerSentence.indexOf(' quand ')
+    );
+    
+    if (lorsqueIndex !== -1) {
+        const startIndex = lorsqueIndex + (lowerSentence.includes(' lorsque ') ? 9 : 7);
+        let condition = sentence.substring(startIndex);
+        // Couper à la virgule, point ou autre marqueur
+        condition = condition.split(/[,.:;]|\s+alors\s+/)[0].trim();
+        return condition;
+    }
+    
+    return '';
 }
 
 /**
@@ -561,49 +1142,69 @@ function extractCondition(sentence) {
  * @return {string} - Question pour la passerelle
  */
 function convertConditionToQuestion(condition) {
-    // Cas spécifiques de conditions
-    if (condition.match(/montant\s+(est\s+)?(de|égal à)?\s*\d+\$?\s*ou\s+moins/i)) {
+    if (!condition) return '?';
+    
+    const lowerCondition = condition.toLowerCase();
+    
+    // Cas spécifiques de conditions monétaires
+    if (lowerCondition.match(/montant\s+(est\s+)?(de|égal à)?\s*\d+\$?\s*ou\s+moins/i)) {
         const montant = condition.match(/\d+/)[0];
         return `Montant ≤ ${montant}$ ?`;
     }
     
-    if (condition.match(/montant\s+(est\s+)?(supérieur|plus grand|plus élevé)(\s+à|\s+que)?\s*\d+\$?/i)) {
+    if (lowerCondition.match(/montant\s+(est\s+)?(supérieur|plus grand|plus élevé)(\s+à|\s+que)?\s*\d+\$?/i)) {
         const montant = condition.match(/\d+/)[0];
         return `Montant > ${montant}$ ?`;
     }
     
-    if (condition.match(/employé\s+(existe|n['']existe\s+pas)/i)) {
+    if (lowerCondition.match(/montant\s+(est\s+)?(\d+)\$?/i)) {
+        const montant = condition.match(/\d+/)[0];
+        return `Montant = ${montant}$ ?`;
+    }
+    
+    // Cas d'existence
+    if (lowerCondition.match(/employé\s+(existe|n['']existe\s+pas)/i)) {
         return `L'employé existe ?`;
     }
     
-    if (condition.match(/client\s+(existe|n['']existe\s+pas)/i)) {
+    if (lowerCondition.match(/client\s+(existe|n['']existe\s+pas)/i)) {
         return `Client existe ?`;
     }
     
-    if (condition.match(/pharmacien\s+(existe|n['']existe\s+pas)/i)) {
+    if (lowerCondition.match(/pharmacien\s+(existe|n['']existe\s+pas)/i)) {
         return `Pharmacien existe ?`;
     }
     
-    if (condition.match(/approuve\s+le\s+rapport|rapport\s+.+\s+n['']est\s+pas\s+approuvé/i)) {
+    // Cas d'approbation/validation
+    if (lowerCondition.match(/rapport\s+(est\s+)?(approuvé|validé)/i)) {
         return `Rapport approuvé ?`;
     }
     
-    if (condition.match(/crédit\s+(est\s+)?(acceptable|bon|valide|approuvé)/i)) {
+    if (lowerCondition.match(/crédit\s+(est\s+)?(acceptable|bon|valide|approuvé)/i)) {
         return `Crédit acceptable ?`;
     }
     
-    // Cas général: reformuler en question
-    if (condition.includes(' est ')) {
-        const parts = condition.split(' est ');
+    // Cas de refus/rejet
+    if (lowerCondition.match(/rapport\s+(est\s+)?(refusé|rejeté|non\s+approuvé)/i)) {
+        return `Rapport refusé ?`;
+    }
+    
+    // Cas général: reformulation en question
+    if (lowerCondition.includes(' est ')) {
+        const parts = lowerCondition.split(' est ');
         return `${capitalizeFirstLetter(parts[0])} est ${parts[1]} ?`;
     }
     
-    if (condition.includes(' a ')) {
-        const parts = condition.split(' a ');
+    if (lowerCondition.includes(' a ')) {
+        const parts = lowerCondition.split(' a ');
         return `${capitalizeFirstLetter(parts[0])} a ${parts[1]} ?`;
     }
     
-    // Dernier recours
+    if (lowerCondition.includes(' existe')) {
+        return `${capitalizeFirstLetter(lowerCondition.split(' existe')[0])} existe ?`;
+    }
+    
+    // Conditions complexes: garder la formulation originale avec un point d'interrogation
     return `${capitalizeFirstLetter(condition)} ?`;
 }
 
@@ -615,29 +1216,54 @@ function convertConditionToQuestion(condition) {
  * @return {string} - Conséquence positive
  */
 function extractPositiveOutcome(sentence, sentences, position) {
-    // Si la phrase contient elle-même la conséquence positive
-    if (sentence.includes(', alors ') || sentence.includes(', celui-ci ')) {
-        const parts = sentence.split(/,\s+(?:alors|celui-ci)\s+/);
-        if (parts.length > 1) {
-            return parts[1].trim();
+    const lowerSentence = sentence.toLowerCase();
+    
+    // 1. Si la phrase contient elle-même la conséquence positive après une virgule ou "alors"
+    if (lowerSentence.includes(', alors ') || 
+        lowerSentence.includes(', il ') || 
+        lowerSentence.includes(', elle ') || 
+        lowerSentence.includes(', celui-ci ')) {
+        
+        // Trouver l'index du séparateur
+        const separatorIndex = Math.max(
+            lowerSentence.indexOf(', alors '),
+            lowerSentence.indexOf(', il '),
+            lowerSentence.indexOf(', elle '),
+            lowerSentence.indexOf(', celui-ci ')
+        );
+        
+        if (separatorIndex !== -1) {
+            const positiveOutcome = sentence.substring(separatorIndex + 2);
+            return positiveOutcome.trim();
         }
     }
     
-    // Sinon, chercher dans la phrase suivante
+    // 2. Chercher la conséquence dans la phrase suivante
     if (position < sentences.length - 1) {
         const nextSentence = sentences[position + 1];
+        const nextLower = nextSentence.toLowerCase();
         
-        // Éviter les phrases qui contiennent "sinon" ou "si ... ne pas"
-        if (!nextSentence.toLowerCase().includes('sinon') && 
-            !nextSentence.toLowerCase().match(/si.+ne\s+pas/)) {
+        // Éviter les phrases qui contiennent "sinon", "dans le cas contraire" ou qui commencent par "si ... ne pas"
+        if (!nextLower.includes('sinon') && 
+            !nextLower.includes('dans le cas contraire') && 
+            !nextLower.match(/^si.+ne\s+pas/i)) {
+            
             return nextSentence.trim();
         }
     }
     
-    // Si la phrase suivante n'est pas pertinente, chercher plus loin
+    // 3. Si la phrase suivante n'est pas pertinente, chercher plus loin
     if (position < sentences.length - 2) {
         const secondNextSentence = sentences[position + 2];
-        return secondNextSentence.trim();
+        const secondNextLower = secondNextSentence.toLowerCase();
+        
+        // Éviter les phrases qui contiennent "sinon" ou qui commencent par "si ... ne pas"
+        if (!secondNextLower.includes('sinon') && 
+            !secondNextLower.includes('dans le cas contraire') && 
+            !secondNextLower.match(/^si.+ne\s+pas/i)) {
+            
+            return secondNextSentence.trim();
+        }
     }
     
     return '';
@@ -651,23 +1277,53 @@ function extractPositiveOutcome(sentence, sentences, position) {
  * @return {string} - Conséquence négative
  */
 function extractNegativeOutcome(sentence, sentences, position) {
-    // Chercher les clauses "sinon"
+    // 1. Chercher les clauses "sinon" explicites dans les phrases suivantes
     for (let i = position + 1; i < Math.min(position + 5, sentences.length); i++) {
         const nextSentence = sentences[i].toLowerCase();
         
-        if (nextSentence.includes('sinon') || 
-            nextSentence.startsWith('si') && nextSentence.includes('n\'est pas') || 
-            nextSentence.startsWith('si') && nextSentence.includes('ne pas')) {
+        if (nextSentence.startsWith('sinon') || 
+            nextSentence.startsWith('dans le cas contraire') || 
+            nextSentence.includes('si ce n\'est pas le cas')) {
+            
             return sentences[i].trim();
         }
     }
     
-    // Rechercher des phrases avec "si... ne... pas"
+    // 2. Rechercher des phrases avec "si... ne... pas" ou négations similaires
     for (let i = position + 1; i < Math.min(position + 5, sentences.length); i++) {
-        if (sentences[i].toLowerCase().includes('n\'est pas') || 
-            sentences[i].toLowerCase().includes('ne pas') ||
-            sentences[i].toLowerCase().includes('non')) {
+        const nextLower = sentences[i].toLowerCase();
+        
+        if ((nextLower.includes('si') && 
+             (nextLower.includes('n\'est pas') || 
+              nextLower.includes('ne pas') || 
+              nextLower.includes('non'))) || 
+            (nextLower.includes('dans le cas où') && 
+             (nextLower.includes('n\'est pas') || 
+              nextLower.includes('ne pas')))) {
+            
             return sentences[i].trim();
+        }
+    }
+    
+    // 3. Chercher des phrases avec des formulations négatives liées à la condition
+    const condition = extractCondition(sentence);
+    if (condition) {
+        const conditionWords = condition.toLowerCase()
+            .replace(/[.,;:!?]/g, '')
+            .split(/\s+/)
+            .filter(word => word.length > 3);
+        
+        for (let i = position + 1; i < Math.min(position + 5, sentences.length); i++) {
+            const nextLower = sentences[i].toLowerCase();
+            
+            // Vérifier si la phrase contient des mots clés de la condition et une négation
+            if (conditionWords.some(word => nextLower.includes(word)) && 
+                (nextLower.includes('n\'est pas') || 
+                 nextLower.includes('ne pas') || 
+                 nextLower.includes('non'))) {
+                
+                return sentences[i].trim();
+            }
         }
     }
     
@@ -682,65 +1338,176 @@ function extractNegativeOutcome(sentence, sentences, position) {
  */
 function extractDataObjects(sentences, fullText) {
     const dataObjects = [];
+    const lowerFullText = fullText.toLowerCase();
     
-    // Mots-clés plus complets
-    const dataKeywords = {
-        'magasin': [
-            'base de données', 'système', 'système d\'information', 
-            'logiciel', 'application', 'dossier', 'filière', 'classeur',
-            'répertoire', 'entrepôt de données', 'archive', 'registre',
-            'pgi', 'erp', 'sgbd'
-        ],
-        'objet': [
-            'document', 'rapport', 'formulaire', 'fichier', 'facture', 
-            'bon de commande', 'bon de livraison', 'courriel', 'message', 
-            'avis', 'notification', 'liste', 'reçu', 'confirmation',
-            'contrat', 'lettre', 'mémo', 'bordereau', 'devis', 'requête'
-        ]
-    };
+    // Mots-clés pour détecter les magasins de données
+    const dataStoreKeywords = [
+        'base de données', 'système', 'système d\'information', 
+        'logiciel', 'application', 'dossier', 'filière', 'classeur',
+        'répertoire', 'entrepôt de données', 'archive', 'registre',
+        'pgi', 'erp', 'sgbd'
+    ];
     
-    // Traiter chaque phrase
+    // Mots-clés pour détecter les objets de données
+    const dataObjectKeywords = [
+        'document', 'rapport', 'formulaire', 'fichier', 'facture', 
+        'bon de commande', 'bon de livraison', 'courriel', 'message', 
+        'avis', 'notification', 'liste', 'reçu', 'confirmation',
+        'contrat', 'lettre', 'mémo', 'bordereau', 'devis', 'requête'
+    ];
+    
+    // Rechercher des mentions explicites de magasins de données
+    for (const keyword of dataStoreKeywords) {
+        if (lowerFullText.includes(keyword)) {
+            // Essayer d'extraire le nom complet du magasin de données
+            const name = extractDataStoreName(fullText, keyword);
+            
+            // Éviter les doublons
+            if (!dataObjects.some(obj => obj.name.toLowerCase() === name.toLowerCase() && obj.type === 'magasin')) {
+                dataObjects.push({
+                    id: `d${dataObjects.length + 1}`,
+                    name: name,
+                    type: 'magasin',
+                    accessMode: 'indéterminé',
+                    associatedActivities: []
+                });
+            }
+        }
+    }
+    
+    // Rechercher des mentions explicites d'objets de données
+    for (const keyword of dataObjectKeywords) {
+        if (lowerFullText.includes(keyword)) {
+            // Essayer d'extraire le nom complet de l'objet de données
+            const name = extractDataObjectName(fullText, keyword);
+            
+            // Éviter les doublons
+            if (!dataObjects.some(obj => obj.name.toLowerCase() === name.toLowerCase() && obj.type === 'objet')) {
+                dataObjects.push({
+                    id: `d${dataObjects.length + 1}`,
+                    name: name,
+                    type: 'objet',
+                    accessMode: 'indéterminé',
+                    associatedActivities: []
+                });
+            }
+        }
+    }
+    
+    // Traiter chaque phrase pour trouver les relations entre données et activités
     sentences.forEach((sentence, index) => {
-        // Pour chaque type de données
-        Object.entries(dataKeywords).forEach(([type, keywords]) => {
-            keywords.forEach(keyword => {
-                if (sentence.toLowerCase().includes(keyword)) {
-                    // Extraire le nom complet
-                    let name = type === 'magasin' ? 
-                        extractDataStoreName(sentence, keyword) : 
-                        extractDataObjectName(sentence, keyword);
-                    
-                    // Éviter les doublons
-                    if (!dataObjects.some(obj => 
-                        obj.name.toLowerCase() === name.toLowerCase() && 
-                        obj.type === type)) {
-                        
-                        // Déterminer le mode d'accès (lecture/écriture/mise à jour)
-                        const accessMode = determineDataAccessMode(sentence);
-                        
-                        dataObjects.push({
-                            name: name,
-                            type: type,
-                            position: index,
-                            accessMode: accessMode,
-                            relatedActivities: []
-                        });
+        const lowerSentence = sentence.toLowerCase();
+        
+        // Pour chaque donnée identifiée, vérifier si la phrase la mentionne
+        dataObjects.forEach(dataObject => {
+            const dataNameLower = dataObject.name.toLowerCase();
+            const keywordVariants = getDataKeywordVariants(dataObject.name, dataObject.type);
+            
+            // Vérifier si la phrase mentionne cette donnée
+            if (keywordVariants.some(variant => lowerSentence.includes(variant.toLowerCase()))) {
+                // Déterminer le mode d'accès (lecture/écriture/mise à jour)
+                const accessMode = determineDataAccessMode(sentence, dataObject.name);
+                
+                // Si un mode d'accès est déterminé, associer cette donnée à l'activité correspondante
+                if (accessMode !== 'indéterminé') {
+                    // Mettre à jour le mode d'accès si nécessaire
+                    if (dataObject.accessMode === 'indéterminé') {
+                        dataObject.accessMode = accessMode;
                     }
                 }
-            });
+            }
         });
     });
+    
+    // Déductions spécifiques pour le cas "Remboursement de dépenses"
+    if (lowerFullText.includes('remboursement') && lowerFullText.includes('dépense')) {
+        // Assurer que les objets de données clés sont présents
+        ensureDataObject(dataObjects, 'Rapport de dépenses', 'objet');
+        ensureDataObject(dataObjects, 'Employés', 'magasin');
+    }
+    
+    // Déductions spécifiques pour le cas "Bureau en folie"
+    if (lowerFullText.includes('bureau en folie') || 
+        (lowerFullText.includes('commande') && lowerFullText.includes('client'))) {
+        ensureDataObject(dataObjects, 'Commandes', 'magasin');
+        ensureDataObject(dataObjects, 'Clients', 'magasin');
+    }
     
     return dataObjects;
 }
 
 /**
+ * S'assure qu'un objet de données existe, en le créant si nécessaire
+ * @param {Object[]} dataObjects - Liste des objets de données
+ * @param {string} name - Nom de l'objet de données
+ * @param {string} type - Type de l'objet (magasin ou objet)
+ */
+function ensureDataObject(dataObjects, name, type) {
+    if (!dataObjects.some(d => d.name.toLowerCase() === name.toLowerCase() && d.type === type)) {
+        dataObjects.push({
+            id: `d${dataObjects.length + 1}`,
+            name: name,
+            type: type,
+            accessMode: 'indéterminé',
+            associatedActivities: []
+        });
+    }
+}
+
+/**
+ * Génère des variantes de mots-clés pour un objet de données
+ * @param {string} name - Nom de l'objet de données
+ * @param {string} type - Type de l'objet (magasin ou objet)
+ * @return {string[]} - Variantes de mots-clés
+ */
+function getDataKeywordVariants(name, type) {
+    const baseName = name.toLowerCase();
+    const variants = [baseName];
+    
+    // Variantes communes pour les magasins de données
+    if (type === 'magasin') {
+        if (baseName.includes('base de données')) {
+            variants.push(baseName.replace('base de données', 'bd'));
+            variants.push(baseName.replace('base de données', 'bdd'));
+        }
+        
+        if (baseName.includes('système')) {
+            variants.push(baseName.replace('système', 'système d\'information'));
+            variants.push(baseName.replace('système', 'si'));
+        }
+    }
+    
+    // Variantes communes pour les objets de données
+    if (type === 'objet') {
+        if (baseName.includes('rapport')) {
+            variants.push(baseName.replace('rapport', 'document'));
+            variants.push(baseName.replace('rapport', 'formulaire'));
+        }
+        
+        if (baseName.includes('bon de')) {
+            variants.push(baseName.replace('bon de', 'formulaire de'));
+        }
+    }
+    
+    // Ajouter des variantes plurielles/singulières
+    if (baseName.endsWith('s')) {
+        variants.push(baseName.substring(0, baseName.length - 1));
+    } else {
+        variants.push(baseName + 's');
+    }
+    
+    return variants;
+}
+
+/**
  * Détermine le mode d'accès à un objet de données
  * @param {string} sentence - Phrase mentionnant l'objet
+ * @param {string} dataName - Nom de l'objet de données
  * @return {string} - Mode d'accès (lecture, création, mise à jour)
  */
-function determineDataAccessMode(sentence) {
+function determineDataAccessMode(sentence, dataName) {
     const lowerSentence = sentence.toLowerCase();
+    const lowerDataName = dataName.toLowerCase();
     
     // Mots-clés pour la création
     if (lowerSentence.includes('crée') || 
@@ -751,7 +1518,18 @@ function determineDataAccessMode(sentence) {
         lowerSentence.includes('établit') ||
         lowerSentence.includes('prépare') ||
         lowerSentence.includes('initialise')) {
-        return 'création';
+        
+        // Vérifier si l'objet de données est l'objet de l'action
+        if (lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('crée') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('génère') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('produit') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('rédige') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('élabore') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('établit') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('prépare') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('initialise')) {
+            return 'création';
+        }
     }
     
     // Mots-clés pour la mise à jour
@@ -761,7 +1539,15 @@ function determineDataAccessMode(sentence) {
         lowerSentence.includes('complète') ||
         lowerSentence.includes('révise') ||
         lowerSentence.includes('édite')) {
-        return 'mise à jour';
+        
+        if (lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('met à jour') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('modifie') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('actualise') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('complète') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('révise') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('édite')) {
+            return 'mise à jour';
+        }
     }
     
     // Mots-clés pour la lecture
@@ -772,7 +1558,35 @@ function determineDataAccessMode(sentence) {
         lowerSentence.includes('observe') ||
         lowerSentence.includes('recherche dans') ||
         lowerSentence.includes('identifie dans')) {
+        
+        if (lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('consulte') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('vérifie') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('lit') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('regarde') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('observe') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('recherche dans') ||
+            lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('identifie dans')) {
+            return 'lecture';
+        }
+    }
+    
+    // Inférence basée sur le contexte
+    if (lowerSentence.includes('dans') && 
+        lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('dans')) {
+        // La donnée est mentionnée après "dans", suggérant une recherche/lecture
         return 'lecture';
+    }
+    
+    if (lowerSentence.includes('à partir de') && 
+        lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('à partir de')) {
+        // La donnée est utilisée comme source, suggérant une lecture
+        return 'lecture';
+    }
+    
+    if (lowerSentence.includes('enregistre') && 
+        lowerSentence.indexOf(lowerDataName) > lowerSentence.indexOf('enregistre')) {
+        // La donnée est l'objet d'un enregistrement
+        return 'création';
     }
     
     return 'indéterminé';
@@ -780,45 +1594,55 @@ function determineDataAccessMode(sentence) {
 
 /**
  * Extrait le nom d'un magasin de données
- * @param {string} sentence - Phrase mentionnant le magasin
+ * @param {string} text - Texte contenant la mention du magasin
  * @param {string} keyword - Mot-clé ayant identifié le magasin
  * @return {string} - Nom du magasin
  */
-function extractDataStoreName(sentence, keyword) {
-    const lowerSentence = sentence.toLowerCase();
-    const keywordIndex = lowerSentence.indexOf(keyword);
+function extractDataStoreName(text, keyword) {
+    const lowerText = text.toLowerCase();
+    const keywordIndex = lowerText.indexOf(keyword);
     
     if (keywordIndex !== -1) {
-        // Rechercher des descripteurs adjacents
-        const beforeKeyword = sentence.substring(0, keywordIndex).trim();
-        const afterKeyword = sentence.substring(keywordIndex + keyword.length).trim();
+        const keywordContext = text.substring(Math.max(0, keywordIndex - 30), 
+                                             Math.min(text.length, keywordIndex + keyword.length + 30));
         
-        if (beforeKeyword.match(/\b(la|le|les|des|de|du)\s+([a-zéèêàçùïëA-Z-]+)\s*$/)) {
-            const matches = beforeKeyword.match(/\b(la|le|les|des|de|du)\s+([a-zéèêàçùïëA-Z-]+)\s*$/);
-            return capitalizeFirstLetter(matches[2] + ' ' + keyword);
+        // Rechercher des descripteurs de type "base de données des X"
+        const descriptorPattern = new RegExp(`(base de données|système|dossier|filière)\\s+(des?|du|de la|de l'|d')\\s+([a-zéèêàçùïëâîôû-]+)`, 'i');
+        const descriptorMatch = keywordContext.match(descriptorPattern);
+        
+        if (descriptorMatch) {
+            return capitalizeFirstLetter(descriptorMatch[1] + ' ' + 
+                                       descriptorMatch[2] + ' ' + 
+                                       descriptorMatch[3]);
         }
         
-        if (afterKeyword.match(/^des\s+([a-zéèêàçùïëA-Z-]+)/)) {
-            const matches = afterKeyword.match(/^des\s+([a-zéèêàçùïëA-Z-]+)/);
-            return capitalizeFirstLetter(keyword + ' des ' + matches[1]);
+        // Rechercher des descripteurs après le mot-clé
+        const afterPattern = new RegExp(`${keyword}\\s+(des?|du|de la|de l'|d')\\s+([a-zéèêàçùïëâîôû-]+)`, 'i');
+        const afterMatch = keywordContext.match(afterPattern);
+        
+        if (afterMatch) {
+            return capitalizeFirstLetter(keyword + ' ' + afterMatch[1] + ' ' + afterMatch[2]);
         }
         
-        if (afterKeyword.match(/^de\s+([a-zéèêàçùïëA-Z-]+)/)) {
-            const matches = afterKeyword.match(/^de\s+([a-zéèêàçùïëA-Z-]+)/);
-            return capitalizeFirstLetter(keyword + ' de ' + matches[1]);
+        // Rechercher des adjectifs qualifiant le mot-clé
+        const adjectivePattern = new RegExp(`(${keyword})\\s+([a-zéèêàçùïëâîôû-]+)`, 'i');
+        const adjectiveMatch = keywordContext.match(adjectivePattern);
+        
+        if (adjectiveMatch) {
+            return capitalizeFirstLetter(adjectiveMatch[1] + ' ' + adjectiveMatch[2]);
         }
     }
     
     // Cas spécifiques communs
-    if (keyword === 'base de données' && lowerSentence.includes('employé')) {
-        return 'Employés';
+    if (keyword === 'base de données' && lowerText.includes('employé')) {
+        return 'Base de données des employés';
     }
     
-    if (keyword === 'base de données' && lowerSentence.includes('client')) {
-        return 'Clients';
+    if (keyword === 'base de données' && lowerText.includes('client')) {
+        return 'Base de données des clients';
     }
     
-    if (keyword === 'système' && lowerSentence.includes('information')) {
+    if (keyword === 'système' && (lowerText.includes('information') || lowerText.includes('si'))) {
         return 'Système d\'information';
     }
     
@@ -826,12 +1650,12 @@ function extractDataStoreName(sentence, keyword) {
         return 'PGI';
     }
     
-    if (keyword === 'filière' && lowerSentence.includes('commande')) {
-        return 'Filière des commandes';
+    if ((keyword === 'filière' || keyword === 'dossier') && lowerText.includes('commande')) {
+        return capitalizeFirstLetter(keyword + ' des commandes');
     }
     
-    if (keyword === 'dossier' && lowerSentence.includes('livraison')) {
-        return 'Dossier des livraisons';
+    if ((keyword === 'filière' || keyword === 'dossier') && lowerText.includes('livraison')) {
+        return capitalizeFirstLetter(keyword + ' des livraisons');
     }
     
     // Par défaut
@@ -840,49 +1664,61 @@ function extractDataStoreName(sentence, keyword) {
 
 /**
  * Extrait le nom d'un objet de données
- * @param {string} sentence - Phrase mentionnant l'objet
+ * @param {string} text - Texte contenant la mention de l'objet
  * @param {string} keyword - Mot-clé ayant identifié l'objet
  * @return {string} - Nom de l'objet
  */
-function extractDataObjectName(sentence, keyword) {
-    const lowerSentence = sentence.toLowerCase();
-    const keywordIndex = lowerSentence.indexOf(keyword);
+function extractDataObjectName(text, keyword) {
+    const lowerText = text.toLowerCase();
+    const keywordIndex = lowerText.indexOf(keyword);
     
     if (keywordIndex !== -1) {
-        // Rechercher des descripteurs adjacents
-        const beforeKeyword = sentence.substring(0, keywordIndex).trim();
-        const afterKeyword = sentence.substring(keywordIndex + keyword.length).trim();
+        const keywordContext = text.substring(Math.max(0, keywordIndex - 30), 
+                                             Math.min(text.length, keywordIndex + keyword.length + 30));
         
-        if (beforeKeyword.match(/\b(le|la|les|du|de|des)\s+([a-zéèêàçùïëA-Z-]+)\s*$/)) {
-            const matches = beforeKeyword.match(/\b(le|la|les|du|de|des)\s+([a-zéèêàçùïëA-Z-]+)\s*$/);
-            return capitalizeFirstLetter(matches[2] + ' ' + keyword);
+        // Rechercher des descripteurs de type "rapport de X"
+        const descriptorPattern = new RegExp(`(${keyword})\\s+(des?|du|de la|de l'|d')\\s+([a-zéèêàçùïëâîôû-]+)`, 'i');
+        const descriptorMatch = keywordContext.match(descriptorPattern);
+        
+        if (descriptorMatch) {
+            return capitalizeFirstLetter(descriptorMatch[1] + ' ' + 
+                                       descriptorMatch[2] + ' ' + 
+                                       descriptorMatch[3]);
         }
         
-        if (afterKeyword.match(/^de\s+([a-zéèêàçùïëA-Z-]+)/)) {
-            const matches = afterKeyword.match(/^de\s+([a-zéèêàçùïëA-Z-]+)/);
-            return capitalizeFirstLetter(keyword + ' de ' + matches[1]);
+        // Rechercher des adjectifs qualifiant le mot-clé
+        const adjectivePattern = new RegExp(`(${keyword})\\s+([a-zéèêàçùïëâîôû-]+)`, 'i');
+        const adjectiveMatch = keywordContext.match(adjectivePattern);
+        
+        if (adjectiveMatch && 
+            !['de', 'du', 'des', 'la', 'le', 'les', 'un', 'une'].includes(adjectiveMatch[2])) {
+            return capitalizeFirstLetter(adjectiveMatch[1] + ' ' + adjectiveMatch[2]);
         }
     }
     
     // Cas spécifiques communs
-    if (keyword === 'rapport' && lowerSentence.includes('dépense')) {
+    if (keyword === 'rapport' && lowerText.includes('dépense')) {
         return 'Rapport de dépenses';
     }
     
-    if (keyword === 'bon' && lowerSentence.includes('commande')) {
-        return 'Bon de commande';
+    if ((keyword === 'bon' || keyword === 'formulaire') && lowerText.includes('commande')) {
+        return keyword === 'bon' ? 'Bon de commande' : 'Formulaire de commande';
     }
     
-    if (keyword === 'bon' && lowerSentence.includes('livraison')) {
-        return 'Bon de livraison';
+    if ((keyword === 'bon' || keyword === 'formulaire') && lowerText.includes('livraison')) {
+        return keyword === 'bon' ? 'Bon de livraison' : 'Formulaire de livraison';
+    }
+    
+    if ((keyword === 'formulaire' || keyword === 'document') && lowerText.includes('dépense')) {
+        return capitalizeFirstLetter(keyword + ' de dépenses');
     }
     
     if (keyword === 'facture') {
         return 'Facture';
     }
     
-    if (keyword === 'document' && lowerSentence.includes('technique')) {
-        return 'Document technique';
+    if (keyword === 'reçu') {
+        return 'Reçu';
     }
     
     // Par défaut
@@ -897,9 +1733,11 @@ function extractDataObjectName(sentence, keyword) {
  */
 function extractEvents(sentences, fullText) {
     const events = [];
+    const lowerFullText = fullText.toLowerCase();
     
     // Ajouter l'événement de début par défaut
     events.push({
+        id: 'start',
         type: 'début',
         name: inferStartEventName(sentences[0], fullText),
         position: 0
@@ -907,13 +1745,14 @@ function extractEvents(sentences, fullText) {
     
     // Rechercher les événements de fin
     sentences.forEach((sentence, index) => {
-        if (sentence.includes('met fin au processus') || 
-            sentence.includes('ce qui met fin') || 
-            sentence.includes('fin du processus') ||
-            sentence.includes('termine le processus') ||
+        if (sentence.toLowerCase().includes('met fin au processus') || 
+            sentence.toLowerCase().includes('ce qui met fin') || 
+            sentence.toLowerCase().includes('fin du processus') ||
+            sentence.toLowerCase().includes('termine le processus') ||
             (index === sentences.length - 1 && !events.some(e => e.type === 'fin'))) {
             
             events.push({
+                id: 'end' + (events.filter(e => e.type === 'fin').length + 1),
                 type: 'fin',
                 name: inferEndEventName(sentence, fullText),
                 position: index
@@ -923,17 +1762,20 @@ function extractEvents(sentences, fullText) {
     
     // Rechercher les événements intermédiaires (minuterie, message)
     sentences.forEach((sentence, index) => {
+        const lowerSentence = sentence.toLowerCase();
+        
         // Minuteries
-        if (sentence.includes('mardi matin') || 
-            sentence.includes('le lendemain') || 
-            sentence.includes('chaque matin') ||
-            sentence.includes('tous les matins') ||
-            sentence.includes('le matin') ||
-            sentence.match(/\ble\s+(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+matin\b/i) ||
-            sentence.match(/\bvers\s+\d+h/i) ||
-            sentence.match(/\bà\s+\d+h/i)) {
+        if (lowerSentence.includes('mardi matin') || 
+            lowerSentence.includes('le lendemain') || 
+            lowerSentence.includes('chaque matin') ||
+            lowerSentence.includes('tous les matins') ||
+            lowerSentence.includes('le matin') ||
+            lowerSentence.match(/\ble\s+(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+matin\b/i) ||
+            lowerSentence.match(/\bvers\s+\d+h/i) ||
+            lowerSentence.match(/\bà\s+\d+h/i)) {
             
             events.push({
+                id: 'e' + (events.length + 1),
                 type: 'intermédiaire-minuterie',
                 name: extractTemporalEvent(sentence),
                 position: index
@@ -941,11 +1783,12 @@ function extractEvents(sentences, fullText) {
         }
         
         // Messages
-        if ((sentence.includes('envoie') || sentence.includes('transmet')) && 
-            (sentence.includes('message') || sentence.includes('courriel') || 
-             sentence.includes('notification') || sentence.includes('communique'))) {
+        if ((lowerSentence.includes('envoie') || lowerSentence.includes('transmet')) && 
+            (lowerSentence.includes('message') || lowerSentence.includes('courriel') || 
+             lowerSentence.includes('notification') || lowerSentence.includes('communique'))) {
             
             events.push({
+                id: 'e' + (events.length + 1),
                 type: 'intermédiaire-message',
                 name: 'Message ' + extractMessageEventName(sentence),
                 position: index,
@@ -953,11 +1796,12 @@ function extractEvents(sentences, fullText) {
             });
         }
         
-        if ((sentence.includes('reçoit') || sentence.includes('attend')) && 
-            (sentence.includes('message') || sentence.includes('courriel') || 
-             sentence.includes('notification') || sentence.includes('réponse'))) {
+        if ((lowerSentence.includes('reçoit') || lowerSentence.includes('attend')) && 
+            (lowerSentence.includes('message') || lowerSentence.includes('courriel') || 
+             lowerSentence.includes('notification') || lowerSentence.includes('réponse'))) {
             
             events.push({
+                id: 'e' + (events.length + 1),
                 type: 'intermédiaire-message',
                 name: 'Réception ' + extractMessageEventName(sentence),
                 position: index,
@@ -966,9 +1810,38 @@ function extractEvents(sentences, fullText) {
         }
     });
     
+    // Événements de fin basés sur des cas spécifiques
+    if (lowerFullText.includes('rapport') && lowerFullText.includes('approuvé')) {
+        // Ajouter un événement de fin pour le rapport approuvé s'il n'existe pas déjà
+        if (!events.some(e => e.type === 'fin' && e.name.toLowerCase().includes('approuvé'))) {
+            events.push({
+                id: 'end' + (events.filter(e => e.type === 'fin').length + 1),
+                type: 'fin',
+                name: 'Rapport approuvé',
+                position: sentences.length
+            });
+        }
+    }
+    
+    if (lowerFullText.includes('rapport') && 
+        (lowerFullText.includes('refusé') || lowerFullText.includes('rejeté'))) {
+        // Ajouter un événement de fin pour le rapport refusé s'il n'existe pas déjà
+        if (!events.some(e => e.type === 'fin' && 
+                         (e.name.toLowerCase().includes('refusé') || 
+                          e.name.toLowerCase().includes('rejeté')))) {
+            events.push({
+                id: 'end' + (events.filter(e => e.type === 'fin').length + 1),
+                type: 'fin',
+                name: 'Rapport refusé',
+                position: sentences.length
+            });
+        }
+    }
+    
     // Si aucun événement de fin n'a été identifié, en ajouter un par défaut
     if (!events.some(e => e.type === 'fin')) {
         events.push({
+            id: 'end1',
             type: 'fin',
             name: 'Fin du processus',
             position: sentences.length - 1
@@ -979,1300 +1852,102 @@ function extractEvents(sentences, fullText) {
 }
 
 /**
- * Infère le nom de l'événement de début à partir du contexte
- * @param {string} firstSentence - Première phrase du scénario
+ * Infère le nom d’un événement de fin à partir du contexte
+ * @param {string} sentence - Phrase qui indique la fin
  * @param {string} fullText - Texte complet du scénario
- * @return {string} - Nom de l'événement de début
- */
-function inferStartEventName(firstSentence, fullText) {
-    const lowerSentence = firstSentence.toLowerCase();
-    
-    // Cas spécifiques
-    if (lowerSentence.includes('rapport de dépenses')) {
-        return 'Rapport de dépenses';
-    }
-    
-    if (lowerSentence.includes('commande')) {
-        return 'Commande';
-    }
-    
-    if (lowerSentence.includes('demande')) {
-        return 'Demande';
-    }
-    
-    if (lowerSentence.includes('facture')) {
-        return 'Facture';
-    }
-    
-    // Extraire un objet du début
-    const objects = ['rapport', 'demande', 'commande', 'requête', 'document', 'formulaire'];
-    for (const obj of objects) {
-        if (lowerSentence.includes(obj)) {
-            return capitalizeFirstLetter(obj);
-        }
-    }
-    
-    // Par défaut
-    return 'Début du processus';
-}
-
-/**
- * Infère le nom de l'événement de fin à partir du contexte
- * @param {string} sentence - Phrase contenant la fin
- * @param {string} fullText - Texte complet du scénario
- * @return {string} - Nom de l'événement de fin
+ * @return {string} - Nom de l’événement de fin
  */
 function inferEndEventName(sentence, fullText) {
     const lowerSentence = sentence.toLowerCase();
-    
-    // Cas spécifiques
-    if (lowerSentence.includes('approuvé')) {
-        return 'Rapport approuvé';
-    }
-    
-    if (lowerSentence.includes('refusé') || lowerSentence.includes('n\'est pas approuvé')) {
-        return 'Rapport refusé';
-    }
-    
-    if (lowerSentence.includes('livrée') || lowerSentence.includes('livraison')) {
+    if (lowerSentence.includes('livraison')) {
         return 'Commande livrée';
     }
-    
-    if (lowerSentence.includes('payée') || lowerSentence.includes('paiement')) {
-        return 'Commande payée';
-    }
-    
-    if (lowerSentence.includes('annulée')) {
+    if (lowerSentence.includes('annulée') || lowerSentence.includes('refusée')) {
         return 'Commande annulée';
     }
-    
-    if (lowerSentence.includes('complétée') || lowerSentence.includes('terminée')) {
-        return 'Commande complétée';
-    }
-    
-    // Par défaut
     return 'Fin du processus';
 }
 
 /**
- * Extrait le nom d'un événement temporel
- * @param {string} sentence - Phrase mentionnant l'événement
- * @return {string} - Nom de l'événement
+ * Extrait la description d’un événement temporel
+ * @param {string} sentence - Phrase contenant une référence temporelle
+ * @return {string} - Description de l’événement temporel
  */
 function extractTemporalEvent(sentence) {
-    const lowerSentence = sentence.toLowerCase();
-    
-    // Jours spécifiques
-    if (lowerSentence.includes('lundi matin')) return 'Lundi matin';
-    if (lowerSentence.includes('mardi matin')) return 'Mardi matin';
-    if (lowerSentence.includes('mercredi matin')) return 'Mercredi matin';
-    if (lowerSentence.includes('jeudi matin')) return 'Jeudi matin';
-    if (lowerSentence.includes('vendredi matin')) return 'Vendredi matin';
-    if (lowerSentence.includes('samedi matin')) return 'Samedi matin';
-    if (lowerSentence.includes('dimanche matin')) return 'Dimanche matin';
-    
-    // Jours génériques
-    if (lowerSentence.includes('lundi')) return 'Lundi';
-    if (lowerSentence.includes('mardi')) return 'Mardi';
-    if (lowerSentence.includes('mercredi')) return 'Mercredi';
-    if (lowerSentence.includes('jeudi')) return 'Jeudi';
-    if (lowerSentence.includes('vendredi')) return 'Vendredi';
-    if (lowerSentence.includes('samedi')) return 'Samedi';
-    if (lowerSentence.includes('dimanche')) return 'Dimanche';
-    
-    // Moments spécifiques
-    if (lowerSentence.includes('le matin') || lowerSentence.includes('chaque matin') || 
-        lowerSentence.includes('tous les matins')) return 'Le matin';
-    if (lowerSentence.includes('soir')) return 'Le soir';
-    if (lowerSentence.includes('lendemain')) return 'Le lendemain';
-    
-    // Heures spécifiques
-    const heureMatch = lowerSentence.match(/vers\s+(\d+)h/);
-    if (heureMatch) {
-        return `À ${heureMatch[1]}h`;
-    }
-    
-    // Périodes
-    if (lowerSentence.match(/\d+\s+(?:heure|minute|jour|semaine|mois)/)) {
-        const matches = lowerSentence.match(/(\d+)\s+(heure|minute|jour|semaine|mois)/);
-        if (matches) {
-            return `Après ${matches[1]} ${matches[2]}${matches[1] > 1 ? 's' : ''}`;
-        }
-    }
-    
-    // Par défaut
-    return 'Attente';
+    const match = sentence.match(/(tous? les? matins?|chaque? matin|le lendemain|vers \d+h|à \d+h)/i);
+    return match ? match[0] : 'Événement temporel';
 }
 
 /**
- * Extrait le nom d'un événement message
- * @param {string} sentence - Phrase mentionnant l'événement
- * @return {string} - Nom de l'événement
+ * Extrait le nom d’un événement de message à partir d’une phrase
+ * @param {string} sentence - Phrase décrivant l’envoi ou la réception d’un message
+ * @return {string} - Nom du message extrait
  */
 function extractMessageEventName(sentence) {
-    const lowerSentence = sentence.toLowerCase();
-    
-    // Types de messages communs
-    if (lowerSentence.includes('facture')) return 'Facture';
-    if (lowerSentence.includes('confirmation')) return 'Confirmation';
-    if (lowerSentence.includes('commande')) return 'Commande';
-    if (lowerSentence.includes('avis')) return 'Avis';
-    if (lowerSentence.includes('notification')) return 'Notification';
-    if (lowerSentence.includes('demande')) return 'Demande';
-    if (lowerSentence.includes('réponse')) return 'Réponse';
-    if (lowerSentence.includes('rapport')) return 'Rapport';
-    if (lowerSentence.includes('verdict')) return 'Verdict';
-    if (lowerSentence.includes('paiement')) return 'Paiement';
-    if (lowerSentence.includes('marchandise')) return 'Marchandise';
-    
-    // Par défaut
-    return 'Message';
-}
-
-/**
- * Analyse la structure du processus et les relations entre composants
- * @param {Object} components - Composants du processus
- * @param {string} text - Texte du scénario
- * @return {Object} - Structure du processus avec relations
- */
-function analyzeProcessStructure(components, text) {
-    // Structure pour organiser le processus
-    const processStructure = {
-        mainProcess: 'Processus principal',
-        lanes: [],
-        activities: [],
-        gateways: [],
-        events: [],
-        dataObjects: [],
-        flows: []
-    };
-    
-    // Organiser les acteurs en couloirs (lanes)
-    processStructure.lanes = organizeActorsIntoLanes(components.actors);
-    
-    // Assigner des IDs uniques à tous les composants
-    assignUniqueIds(components);
-    
-    // Préparer les activités et leur ordre
-    processStructure.activities = prepareActivities(components.activities, processStructure.lanes);
-    
-    // Préparer les passerelles de décision
-    processStructure.gateways = prepareGateways(components.decisions, processStructure.activities);
-    
-    // Préparer les événements
-    processStructure.events = prepareEvents(components.events, processStructure.lanes);
-    
-    // Préparer les objets et magasins de données
-    processStructure.dataObjects = prepareDataObjects(components.dataObjects, processStructure.activities);
-    
-    // Établir les flux entre composants
-    processStructure.flows = establishFlows(
-        processStructure.activities, 
-        processStructure.gateways, 
-        processStructure.events,
-        processStructure.dataObjects,
-        text
-    );
-    
-    // Nommer le processus principal en fonction du contexte
-    processStructure.mainProcess = identifyProcessName(text, components);
-    
-    return processStructure;
-}
-
-/**
- * Organise les acteurs en couloirs (lanes)
- * @param {Object[]} actors - Acteurs identifiés
- * @return {Object[]} - Couloirs organisés
- */
-function organizeActorsIntoLanes(actors) {
-    const lanes = [];
-    const externalActors = [];
-    
-    // Filtrer pour ne garder que les acteurs internes avec des activités
-    const internalActors = actors.filter(actor => actor.isInternal);
-    
-    // Ajouter les acteurs internes comme couloirs
-    if (internalActors.length === 0) {
-        // Si aucun acteur interne n'a été identifié, créer un couloir système par défaut
-        lanes.push({
-            name: 'Système',
-            isDefault: true
-        });
-    } else {
-        internalActors.forEach(actor => {
-            lanes.push({
-                name: actor.name,
-                isDefault: false
-            });
-        });
-    }
-    
-    // Identifier les acteurs externes
-    actors.filter(actor => !actor.isInternal).forEach(actor => {
-        externalActors.push({
-            name: actor.name
-        });
-    });
-    
-    return {
-        internal: lanes,
-        externalActors: externalActors
-    };
-}
-
-/**
- * Assigne des IDs uniques à tous les composants
- * @param {Object} components - Composants du processus
- */
-function assignUniqueIds(components) {
-    // Assigner IDs aux activités
-    components.activities.forEach((activity, index) => {
-        activity.id = 'a' + (index + 1);
-    });
-    
-    // Assigner IDs aux décisions
-    components.decisions.forEach((decision, index) => {
-        decision.id = 'g' + (index + 1);
-    });
-    
-    // Assigner IDs aux objets de données
-    components.dataObjects.forEach((dataObject, index) => {
-        dataObject.id = 'd' + (index + 1);
-    });
-    
-    // Assigner IDs aux événements
-    components.events.forEach((event, index) => {
-        if (event.type === 'début') {
-            event.id = 'start';
-        } else if (event.type === 'fin') {
-            event.id = 'end' + (components.events.filter(e => e.type === 'fin').indexOf(event) + 1);
-        } else {
-            event.id = 'e' + (index + 1);
-        }
-    });
-}
-
-/**
- * Prépare les activités avec leurs attributs pour la génération du BPMN
- * @param {Object[]} activities - Activités brutes
- * @param {Object} lanes - Couloirs du processus
- * @return {Object[]} - Activités préparées
- */
-function prepareActivities(activities, lanes) {
-    const preparedActivities = [];
-    
-    activities.forEach(activity => {
-        // Déterminer le couloir approprié pour l'activité
-        let laneName = activity.actor;
-        
-        // Vérifier si le couloir existe
-        if (!lanes.internal.some(lane => lane.name === laneName)) {
-            // Utiliser le premier couloir disponible comme fallback
-            laneName = lanes.internal[0].name;
-        }
-        
-        preparedActivities.push({
-            id: activity.id,
-            name: activity.name,
-            type: activity.type,
-            lane: laneName,
-            position: activity.position,
-            hasDataInteraction: activity.hasDataInteraction
-        });
-    });
-    
-    return preparedActivities;
-}
-
-/**
- * Prépare les passerelles avec leurs attributs pour la génération du BPMN
- * @param {Object[]} decisions - Décisions brutes
- * @param {Object[]} activities - Activités préparées
- * @return {Object[]} - Passerelles préparées
- */
-function prepareGateways(decisions, activities) {
-    const preparedGateways = [];
-    
-    decisions.forEach(decision => {
-        // Déterminer si c'est une passerelle de bifurcation ou de convergence
-        const isBifurcation = decision.positiveOutcome && decision.negativeOutcome;
-        const isConvergence = !isBifurcation && decisions.some(d => 
-            Math.abs(d.position - decision.position) <= 5 && d !== decision);
-        
-        // Construire une question plus précise pour la passerelle
-        let question = decision.question;
-        if (question.includes('existe') || question.includes('présent')) {
-            question = question.replace('?', ' dans le système ?');
-        }
-        
-        // Déterminer le bon couloir pour la passerelle
-        const laneName = determineGatewayLane(decision, activities);
-        
-        preparedGateways.push({
-            id: decision.id,
-            name: question,
-            type: 'exclusive',
-            isConvergence: isConvergence,
-            isBifurcation: isBifurcation,
-            lane: laneName,
-            position: decision.position,
-            positiveOutcome: decision.positiveOutcome,
-            negativeOutcome: decision.negativeOutcome
-        });
-    });
-    
-    return preparedGateways;
-}
-
-/**
- * Détermine le couloir pour une passerelle
- * @param {Object} decision - Décision
- * @param {Object[]} activities - Activités
- * @return {string} - Nom du couloir
- */
-function determineGatewayLane(decision, activities) {
-    // Trouver l'activité la plus proche de la décision
-    let closestActivity = null;
-    let minDistance = Infinity;
-    
-    activities.forEach(activity => {
-        const distance = Math.abs(activity.position - decision.position);
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestActivity = activity;
-        }
-    });
-    
-    // Utiliser le couloir de l'activité la plus proche
-    return closestActivity ? closestActivity.lane : activities[0].lane;
-}
-
-/**
- * Prépare les événements avec leurs attributs pour la génération du BPMN
- * @param {Object[]} events - Événements bruts
- * @param {Object} lanes - Couloirs du processus
- * @return {Object[]} - Événements préparés
- */
-function prepareEvents(events, lanes) {
-    const preparedEvents = [];
-    
-    events.forEach(event => {
-        // Déterminer le couloir approprié pour l'événement
-        let laneName;
-        
-        if (event.type === 'début') {
-            // Premier événement va dans le premier couloir
-            laneName = lanes.internal[0].name;
-        } else if (event.type === 'fin') {
-            // Événements de fin dans le dernier couloir impliqué
-            laneName = lanes.internal[lanes.internal.length - 1].name;
-        } else {
-            // Événements intermédiaires dans le couloir approprié
-            laneName = determineIntermediateEventLane(event, lanes);
-        }
-        
-        preparedEvents.push({
-            id: event.id,
-            name: event.name,
-            type: event.type,
-            lane: laneName,
-            position: event.position,
-            isEmission: event.isEmission
-        });
-    });
-    
-    return preparedEvents;
-}
-
-/**
- * Détermine le couloir pour un événement intermédiaire
- * @param {Object} event - Événement intermédiaire
- * @param {Object} lanes - Couloirs du processus
- * @return {string} - Nom du couloir
- */
-function determineIntermediateEventLane(event, lanes) {
-    if (event.type.includes('minuterie')) {
-        // Pour les minuteries, utiliser un couloir approprié en fonction du contexte
-        if (event.name.includes('matin')) {
-            const processingLanes = lanes.internal.filter(lane => 
-                lane.name.includes('Entrepôt') || 
-                lane.name.includes('Préposé') ||
-                lane.name.includes('Service')
-            );
-            if (processingLanes.length > 0) {
-                return processingLanes[0].name;
-            }
-        }
-    }
-    
-    if (event.type.includes('message')) {
-        // Pour les messages, utiliser le couloir approprié en fonction du contexte
-        if (event.isEmission) {
-            const communicationLanes = lanes.internal.filter(lane => 
-                lane.name.includes('Service') || 
-                lane.name.includes('Agent') ||
-                lane.name.includes('Vendeur') ||
-                lane.name.includes('Représentant')
-            );
-            if (communicationLanes.length > 0) {
-                return communicationLanes[0].name;
-            }
-        } else {
-            const receptionLanes = lanes.internal.filter(lane => 
-                lane.name.includes('Service') || 
-                lane.name.includes('Agent') ||
-                lane.name.includes('Comptabilité')
-            );
-            if (receptionLanes.length > 0) {
-                return receptionLanes[0].name;
-            }
-        }
-    }
-    
-    // Par défaut, premier couloir
-    return lanes.internal[0].name;
-}
-
-/**
- * Prépare les objets de données avec leurs attributs pour la génération du BPMN
- * @param {Object[]} dataObjects - Objets de données bruts
- * @param {Object[]} activities - Activités préparées
- * @return {Object[]} - Objets de données préparés
- */
-function prepareDataObjects(dataObjects, activities) {
-    const preparedDataObjects = [];
-    
-    dataObjects.forEach(dataObject => {
-        // Trouver les activités associées à cet objet de données
-        const relatedActivities = findRelatedActivities(dataObject, activities);
-        
-        preparedDataObjects.push({
-            id: dataObject.id,
-            name: dataObject.name,
-            type: dataObject.type,
-            accessMode: dataObject.accessMode,
-            associatedActivities: relatedActivities.map(act => act.id)
-        });
-    });
-    
-    return preparedDataObjects;
-}
-
-/**
- * Trouve les activités liées à un objet de données
- * @param {Object} dataObject - Objet de données
- * @param {Object[]} activities - Activités
- * @return {Object[]} - Activités liées
- */
-function findRelatedActivities(dataObject, activities) {
-    const relatedActivities = [];
-    
-    // Rechercher les activités proches de la position de l'objet de données
-    activities.forEach(activity => {
-        const positionDistance = Math.abs(activity.position - dataObject.position);
-        
-        // Considérer les activités proches et qui interagissent avec des données
-        if (positionDistance <= 2 && activity.hasDataInteraction) {
-            relatedActivities.push(activity);
-        }
-    });
-    
-    // Si aucune activité n'a été trouvée, prendre la plus proche avec interaction de données
-    if (relatedActivities.length === 0) {
-        const dataActivities = activities.filter(a => a.hasDataInteraction);
-        if (dataActivities.length > 0) {
-            let nearestActivity = null;
-            let minDistance = Infinity;
-            
-            dataActivities.forEach(activity => {
-                const distance = Math.abs(activity.position - dataObject.position);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    nearestActivity = activity;
-                }
-            });
-            
-            if (nearestActivity) {
-                relatedActivities.push(nearestActivity);
-            }
-        }
-    }
-    
-    return relatedActivities;
-}
-
-/**
- * Établit les flux entre les composants du processus
- * @param {Object[]} activities - Activités préparées
- * @param {Object[]} gateways - Passerelles préparées
- * @param {Object[]} events - Événements préparés
- * @param {Object[]} dataObjects - Objets de données préparés
- * @param {string} text - Texte du scénario
- * @return {Object[]} - Flux établis
- */
-function establishFlows(activities, gateways, events, dataObjects, text) {
-    const flows = [];
-    
-    // 1. Flux depuis l'événement de début vers la première activité
-    const startEvent = events.find(e => e.type === 'début');
-    if (startEvent && activities.length > 0) {
-        flows.push({
-            id: 'f1',
-            type: 'sequence',
-            from: startEvent.id,
-            to: activities[0].id,
-            condition: ''
-        });
-    }
-    
-    // 2. Connecter les activités séquentiellement, sauf si une passerelle intervient
-    for (let i = 0; i < activities.length - 1; i++) {
-        const currentActivity = activities[i];
-        const nextActivity = activities[i + 1];
-        
-        // Vérifier s'il y a une passerelle ou un événement intermédiaire entre ces deux activités
-        const gatewayBetween = findGatewayBetween(gateways, currentActivity.position, nextActivity.position);
-        const eventBetween = findEventBetween(events, currentActivity.position, nextActivity.position);
-        
-        if (!gatewayBetween && !eventBetween) {
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'sequence',
-                from: currentActivity.id,
-                to: nextActivity.id,
-                condition: ''
-            });
-        } else if (gatewayBetween) {
-            // Connecter l'activité à la passerelle
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'sequence',
-                from: currentActivity.id,
-                to: gatewayBetween.id,
-                condition: ''
-            });
-            
-            // Si c'est une passerelle de bifurcation, connecter aux cibles appropriées
-            if (gatewayBetween.isBifurcation) {
-                const positiveTarget = findActivityForOutcome(activities, gatewayBetween.positiveOutcome);
-                const negativeTarget = findActivityForOutcome(activities, gatewayBetween.negativeOutcome);
-                
-                if (positiveTarget) {
-                    flows.push({
-                        id: 'f' + (flows.length + 1),
-                        type: 'sequence',
-                        from: gatewayBetween.id,
-                        to: positiveTarget.id,
-                        condition: 'Oui'
-                    });
-                }
-                
-                if (negativeTarget) {
-                    flows.push({
-                        id: 'f' + (flows.length + 1),
-                        type: 'sequence',
-                        from: gatewayBetween.id,
-                        to: negativeTarget.id,
-                        condition: 'Non'
-                    });
-                }
-            } else {
-                // Si c'est une passerelle de convergence, connecter à l'activité suivante
-                flows.push({
-                    id: 'f' + (flows.length + 1),
-                    type: 'sequence',
-                    from: gatewayBetween.id,
-                    to: nextActivity.id,
-                    condition: ''
-                });
-            }
-        } else if (eventBetween) {
-            // Connecter l'activité à l'événement intermédiaire
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'sequence',
-                from: currentActivity.id,
-                to: eventBetween.id,
-                condition: ''
-            });
-            
-            // Connecter l'événement intermédiaire à l'activité suivante
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'sequence',
-                from: eventBetween.id,
-                to: nextActivity.id,
-                condition: ''
-            });
-        }
-    }
-    
-    // 3. Connecter les dernières activités aux événements de fin
-    const endEvents = events.filter(e => e.type === 'fin');
-    if (endEvents.length > 0 && activities.length > 0) {
-        // Trouver les activités qui n'ont pas de flux sortant
-        const activitiesWithoutOutflow = activities.filter(activity => 
-            !flows.some(flow => flow.from === activity.id)
-        );
-        
-        // Connecter ces activités aux événements de fin appropriés
-        activitiesWithoutOutflow.forEach(activity => {
-            // Trouver l'événement de fin le plus pertinent
-            const relevantEndEvent = findMostRelevantEndEvent(activity, endEvents, text);
-            
-            if (relevantEndEvent) {
-                flows.push({
-                    id: 'f' + (flows.length + 1),
-                    type: 'sequence',
-                    from: activity.id,
-                    to: relevantEndEvent.id,
-                    condition: ''
-                });
-            }
-        });
-    }
-    
-    // 4. Gérer les flux de message
-    events.filter(e => e.type.includes('message')).forEach(messageEvent => {
-        // Pour chaque événement message, déterminer l'acteur externe correspondant
-        const messageContext = text.substring(Math.max(0, messageEvent.position - 200), 
-                                            Math.min(text.length, messageEvent.position + 200));
-        
-        // Rechercher les mots-clés d'acteurs externes
-        const externalActorKeywords = {
-            'Client': ['client', 'acheteur', 'consommateur'],
-            'Employé': ['employé', 'salarié', 'travailleur'],
-            'Fournisseur': ['fournisseur', 'prestataire', 'vendeur'],
-            'Institution financière': ['banque', 'institution financière'],
-            'Pharmacien': ['pharmacien', 'chimiste']
-        };
-        
-        // Identifier l'acteur externe le plus pertinent
-        let externalActor = null;
-        for (const [actor, keywords] of Object.entries(externalActorKeywords)) {
-            if (keywords.some(keyword => messageContext.toLowerCase().includes(keyword))) {
-                externalActor = actor;
-                break;
-            }
-        }
-        
-        // Par défaut, utiliser "Client"
-        if (!externalActor) {
-            externalActor = 'Client';
-        }
-        
-        // Créer le flux de message
-        if (messageEvent.isEmission) {
-            // Message sortant
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'message',
-                from: messageEvent.id,
-                to: externalActor,
-                name: messageEvent.name.replace('Message ', '')
-            });
-        } else {
-            // Message entrant
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'message',
-                from: externalActor,
-                to: messageEvent.id,
-                name: messageEvent.name.replace('Réception ', '')
-            });
-        }
-    });
-    
-    // 5. Ajouter les flux pour les événements de fin qui envoient des messages
-    events.filter(e => e.type === 'fin' && 
-                 (e.name.includes('livrée') || 
-                  e.name.includes('payée') || 
-                  e.name.includes('complétée'))).forEach(finEvent => {
-        
-        // Rechercher l'acteur externe approprié
-        let externalActor = 'Client';
-        if (finEvent.name.includes('livrée')) {
-            // Message concernant une livraison
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'message',
-                from: finEvent.id,
-                to: externalActor,
-                name: 'Marchandise'
-            });
-        } else if (finEvent.name.includes('payée')) {
-            // Message concernant un paiement
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'message',
-                from: finEvent.id,
-                to: 'Institution financière',
-                name: 'Paiement'
-            });
-        } else {
-            // Autre type de message
-            flows.push({
-                id: 'f' + (flows.length + 1),
-                type: 'message',
-                from: finEvent.id,
-                to: externalActor,
-                name: 'Confirmation'
-            });
-        }
-    });
-    
-    return flows;
-}
-
-/**
- * Trouve une passerelle entre deux positions
- * @param {Object[]} gateways - Passerelles
- * @param {number} startPos - Position de départ
- * @param {number} endPos - Position d'arrivée
- * @return {Object} - Passerelle trouvée ou null
- */
-function findGatewayBetween(gateways, startPos, endPos) {
-    return gateways.find(gateway => 
-        gateway.position > startPos && gateway.position < endPos
-    );
-}
-
-/**
- * Trouve un événement intermédiaire entre deux positions
- * @param {Object[]} events - Événements
- * @param {number} startPos - Position de départ
- * @param {number} endPos - Position d'arrivée
- * @return {Object} - Événement trouvé ou null
- */
-function findEventBetween(events, startPos, endPos) {
-    return events.find(event => 
-        event.type.startsWith('intermédiaire') && 
-        event.position > startPos && 
-        event.position < endPos
-    );
-}
-
-/**
- * Trouve une activité correspondant à une conséquence
- * @param {Object[]} activities - Activités
- * @param {string} outcome - Description de la conséquence
- * @return {Object} - Activité trouvée ou null
- */
-function findActivityForOutcome(activities, outcome) {
-    if (!outcome) return null;
-    
-    // Rechercher des mots-clés de l'activité dans la description
-    const keywords = extractKeywords(outcome);
-    
-    return activities.find(activity => {
-        const activityKeywords = extractKeywords(activity.name);
-        return keywords.some(keyword => 
-            activityKeywords.includes(keyword) ||
-            activity.name.toLowerCase().includes(keyword)
-        );
-    });
-}
-
-/**
- * Extrait les mots-clés d'un texte
- * @param {string} text - Texte à analyser
- * @return {string[]} - Mots-clés extraits
- */
-function extractKeywords(text) {
-    if (!text) return [];
-    
-    return text.toLowerCase()
-        .replace(/[.,;:!?]/g, '')
-        .split(/\s+/)
-        .filter(word => word.length > 3)
-        .filter(word => !['pour', 'avec', 'dans', 'cette', 'entre', 'alors', 'donc', 'mais', 'puis', 'ensuite'].includes(word));
-}
-
-/**
- * Trouve l'événement de fin le plus pertinent pour une activité
- * @param {Object} activity - Activité
- * @param {Object[]} endEvents - Événements de fin
- * @param {string} text - Texte du scénario
- * @return {Object} - Événement de fin pertinent
- */
-function findMostRelevantEndEvent(activity, endEvents, text) {
-    // Si un seul événement de fin, l'utiliser
-    if (endEvents.length === 1) {
-        return endEvents[0];
-    }
-    
-    // Rechercher des indices contextuels
-    const activityContext = text.substring(Math.max(0, text.indexOf(activity.name) - 100), 
-                                         Math.min(text.length, text.indexOf(activity.name) + activity.name.length + 200));
-    
-    // Chercher des mots-clés de fin spécifiques
-    if (activityContext.includes('approuv') && endEvents.some(e => e.name.includes('approuvé'))) {
-        return endEvents.find(e => e.name.includes('approuvé'));
-    }
-    
-    if ((activityContext.includes('refus') || activityContext.includes('rejet')) && 
-        endEvents.some(e => e.name.includes('refusé') || e.name.includes('rejeté'))) {
-        return endEvents.find(e => e.name.includes('refusé') || e.name.includes('rejeté'));
-    }
-    
-    if (activityContext.includes('livrai') && endEvents.some(e => e.name.includes('livré'))) {
-        return endEvents.find(e => e.name.includes('livré'));
-    }
-    
-    if (activityContext.includes('annul') && endEvents.some(e => e.name.includes('annulé'))) {
-        return endEvents.find(e => e.name.includes('annulé'));
-    }
-    
-    if (activityContext.includes('paie') && endEvents.some(e => e.name.includes('payé'))) {
-        return endEvents.find(e => e.name.includes('payé'));
-    }
-    
-    if ((activityContext.includes('complet') || activityContext.includes('termin')) && 
-        endEvents.some(e => e.name.includes('complété') || e.name.includes('terminé'))) {
-        return endEvents.find(e => e.name.includes('complété') || e.name.includes('terminé'));
-    }
-    
-    // Par défaut, utiliser le premier événement de fin
-    return endEvents[0];
-}
-
-/**
- * Identifie le nom du processus en fonction du contexte
- * @param {string} text - Texte du scénario
- * @param {Object} components - Composants du processus
- * @return {string} - Nom du processus
- */
-function identifyProcessName(text, components) {
-    // Rechercher des mots-clés indiquant le type de processus
-    const processTypes = [
-        {keyword: 'remboursement', name: 'Processus de remboursement des dépenses'},
-        {keyword: 'vente', name: 'Processus de vente'},
-        {keyword: 'achat', name: 'Processus d\'achat'},
-        {keyword: 'commande', name: 'Processus de prise de commande'},
-        {keyword: 'livraison', name: 'Processus de livraison'},
-        {keyword: 'facturation', name: 'Processus de facturation'},
-        {keyword: 'validation', name: 'Processus de validation'},
-        {keyword: 'approbation', name: 'Processus d\'approbation'},
-        {keyword: 'plainte', name: 'Processus de gestion des plaintes'},
-        {keyword: 'rapport', name: 'Processus de gestion des rapports'},
-        {keyword: 'recrutement', name: 'Processus de recrutement'},
-        {keyword: 'gestion', name: 'Processus de gestion'},
-        {keyword: 'paiement', name: 'Processus de paiement'},
-        {keyword: 'dépense', name: 'Processus de remboursement des dépenses'}
-    ];
-    
-    for (const type of processTypes) {
-        if (text.toLowerCase().includes(type.keyword)) {
-            return type.name;
-        }
-    }
-    
-    // Si aucun type spécifique n'est identifié, utiliser un nom générique
-    return 'Processus principal';
+    const match = sentence.match(/(courriel|message|notification|réponse|avis)/i);
+    return match ? match[0] : 'Message';
 }
 
 /**
  * Formate la description BPMN à partir de la structure du processus
- * @param {Object} structure - Structure du processus
+ * @param {Object} processStructure - Structure analysée du processus
  * @return {string} - Description BPMN formatée
  */
-function formatBPMNDescription(structure) {
+function formatBPMNDescription(processStructure) {
+    const { actors, activities, decisions, dataObjects, events } = processStructure;
+
     let description = '';
-    
-    // 1. Tracer d'abord les piscines pour les acteurs externes
-    if (structure.lanes.externalActors && structure.lanes.externalActors.length > 0) {
-        structure.lanes.externalActors.forEach(actor => {
-            description += `Tracer une piscine pour l'acteur externe « ${actor.name} ».\n\n`;
-        });
+
+    // 1. Piscines et couloirs
+    const externalActors = actors.filter(a => !a.isInternal);
+    const internalActors = actors.filter(a => a.isInternal && a.requiresLane);
+
+    externalActors.forEach(actor => {
+        description += `Tracer une piscine pour l'acteur externe "${actor.name}".\n`;
+    });
+
+    if (internalActors.length > 0) {
+        description += `Tracer une piscine "Processus principal" dans laquelle on retrouve les couloirs suivants : ${internalActors.map(a => `"${a.name}"`).join(', ')}.\n`;
     }
-    
-    // 2. Tracer la piscine principale avec ses couloirs
-    description += `Tracer une piscine « ${structure.mainProcess} » dans laquelle on retrouve `;
-    if (structure.lanes.internal.length === 1) {
-        description += `un couloir pour l'acteur interne: « ${structure.lanes.internal[0].name} ».\n\n`;
-    } else {
-        description += `${structure.lanes.internal.length} couloirs pour les acteurs internes: `;
-        description += structure.lanes.internal.map(lane => `« ${lane.name} »`).join(', ') + '.\n\n';
-    }
-    
-    // 3. Événements de début
-    const startEvent = structure.events.find(e => e.type === 'début');
+
+    // 2. Événement de début
+    const startEvent = events.find(e => e.type === 'début');
     if (startEvent) {
-        if (structure.lanes.externalActors && structure.lanes.externalActors.length > 0) {
-            // Événement de début avec message depuis un acteur externe
-            const externalActor = structure.lanes.externalActors[0];
-            description += `Tracer un événement début générique à la frontière de la piscine « ${externalActor.name} ».\n\n`;
-            description += `Tracer un événement début message au début du couloir « ${startEvent.lane} » et relier l'événement de début générique à l'événement début message par le flux de message « ${startEvent.name} ».\n\n`;
-        } else {
-            // Événement de début standard
-            description += `Tracer un événement début générique au début du couloir « ${startEvent.lane} ».\n\n`;
-        }
+        description += `Tracer un événement de début générique nommé "${startEvent.name}".\n`;
     }
-    
-    // 4. Tracer les activités et les éléments liés dans l'ordre du flux
-    const sequence = determineElementSequence(structure);
-    for (let i = 0; i < sequence.length; i++) {
-        const element = sequence[i];
-        
-        if (element.type === 'activity') {
-            // Tracer l'activité
-            const activity = structure.activities.find(a => a.id === element.id);
-            if (activity) {
-                const activityType = activity.type === 'manuelle' ? 'manuelle' : 
-                                    activity.type === 'service' ? 'service' : 'utilisateur';
-                
-                description += `Tracer l'activité ${activityType} « ${activity.name} » dans le couloir « ${activity.lane} »`;
-                
-                // Si ce n'est pas le premier élément, relier au précédent
-                if (i > 0 && sequence[i-1].element) {
-                    description += ` et relier ${sequence[i-1].element} à cette activité par un flux de séquence`;
-                    
-                    // Ajouter la condition si nécessaire
-                    if (element.condition) {
-                        description += ` « ${element.condition} »`;
-                    }
-                }
-                
-                description += '.\n\n';
-                
-                // Stocker une référence à cet élément pour les liens futurs
-                element.element = `l'activité ${activityType} « ${activity.name} »`;
-                
-                // Ajouter les objets de données associés
-                addDataObjectsToActivity(activity, structure.dataObjects, description);
-            }
-        } else if (element.type === 'gateway') {
-            // Tracer la passerelle
-            const gateway = structure.gateways.find(g => g.id === element.id);
-            if (gateway) {
-                if (gateway.isConvergence) {
-                    description += `Tracer une passerelle exclusive de convergence`;
-                } else {
-                    description += `Tracer une passerelle exclusive de bifurcation « ${gateway.name} »`;
-                }
-                
-                description += ` dans le couloir « ${gateway.lane} »`;
-                
-                // Si ce n'est pas le premier élément, relier au précédent
-                if (i > 0 && sequence[i-1].element) {
-                    description += ` et relier ${sequence[i-1].element} à cette passerelle par un flux de séquence`;
-                }
-                
-                description += '.\n\n';
-                
-                // Stocker une référence à cet élément pour les liens futurs
-                element.element = gateway.isConvergence ? 
-                    `la passerelle exclusive de convergence` : 
-                    `la passerelle exclusive de bifurcation « ${gateway.name} »`;
-            }
-        } else if (element.type === 'event') {
-            // Tracer l'événement
-            const event = structure.events.find(e => 
-                e.id === element.id || 
-                (element.eventType === 'début' && e.type === 'début') ||
-                (element.eventType === 'fin' && e.type === 'fin'));
-            
-            if (event && (event.type === 'intermédiaire-minuterie' || event.type === 'intermédiaire-message')) {
-                const eventTypeStr = event.type === 'intermédiaire-minuterie' ? 'intermédiaire minuterie' : 
-                                   (event.isEmission ? 'intermédiaire émission message' : 'intermédiaire réception message');
-                
-                description += `Tracer un événement ${eventTypeStr} « ${event.name} » dans le couloir « ${event.lane} »`;
-                
-                // Si ce n'est pas le premier élément, relier au précédent
-                if (i > 0 && sequence[i-1].element) {
-                    description += ` et relier ${sequence[i-1].element} à cet événement par un flux de séquence`;
-                }
-                
-                description += '.\n\n';
-                
-                // Si c'est un événement message, ajouter le flux de message
-                if (event.type === 'intermédiaire-message') {
-                    const messageFlow = structure.flows.find(f => 
-                        (f.type === 'message' && f.from === event.id) || 
-                        (f.type === 'message' && f.to === event.id));
-                    
-                    if (messageFlow) {
-                        const externalActor = typeof messageFlow.from === 'string' && !messageFlow.from.startsWith('e') ? 
-                            messageFlow.from : messageFlow.to;
-                        
-                        if (event.isEmission) {
-                            description += `Tracer un flux de message « ${messageFlow.name} » de cet événement jusqu'à la frontière de la piscine « ${externalActor} ».\n\n`;
-                        } else {
-                            description += `Tracer un flux de message « ${messageFlow.name} » de la frontière de la piscine « ${externalActor} » jusqu'à cet événement.\n\n`;
-                        }
-                    }
-                }
-                
-                // Stocker une référence à cet élément pour les liens futurs
-                element.element = `l'événement ${eventTypeStr} « ${event.name} »`;
-            } else if (event && event.type === 'fin') {
-                description += `Tracer un événement fin ${event.name.includes('Marchandise') || 
-                                            event.name.includes('Paiement') || 
-                                            event.name.includes('Avis') ? 'message' : 'générique'} « ${event.name} » dans le couloir « ${event.lane} »`;
-                
-                // Si ce n'est pas le premier élément, relier au précédent
-                if (i > 0 && sequence[i-1].element) {
-                    description += ` et relier ${sequence[i-1].element} à cet événement par un flux de séquence`;
-                }
-                
-                description += '.\n\n';
-                
-                // Si c'est un événement de fin avec message, ajouter le flux de message
-                if (event.name.includes('Marchandise') || event.name.includes('Paiement') || event.name.includes('Avis')) {
-                    const messageFlow = structure.flows.find(f => 
-                        f.type === 'message' && f.from === event.id);
-                    
-                    if (messageFlow) {
-                        description += `Tracer un flux de message « ${messageFlow.name} », de l'événement de fin « ${event.name} » jusqu'à à la frontière de la piscine « ${messageFlow.to} ».\n\n`;
-                    }
-                }
-            }
-        }
-    }
-    
-    // 5. Ajouter les associations entre activités et données qui n'ont pas encore été incluses
-    structure.dataObjects.forEach(dataObject => {
-        if (dataObject.associatedActivities && dataObject.associatedActivities.length > 0) {
-            dataObject.associatedActivities.forEach(activityId => {
-                const activity = structure.activities.find(a => a.id === activityId);
-                if (activity) {
-                    const activityType = activity.type === 'manuelle' ? 'manuelle' : 
-                                       activity.type === 'service' ? 'service' : 'utilisateur';
-                    
-                    if (dataObject.accessMode === 'lecture') {
-                        description += `Tracer une association entre le ${dataObject.type} de données « ${dataObject.name} » et l'activité ${activityType} « ${activity.name} » pour indiquer que l'activité lit les données.\n\n`;
-                    } else if (dataObject.accessMode === 'création') {
-                        description += `Tracer une association entre l'activité ${activityType} « ${activity.name} » et le ${dataObject.type} de données « ${dataObject.name} » pour indiquer que l'activité crée les données.\n\n`;
-                    } else if (dataObject.accessMode === 'mise à jour') {
-                        description += `Tracer une association bidirectionnelle entre l'activité ${activityType} « ${activity.name} » et le ${dataObject.type} de données « ${dataObject.name} » pour indiquer que l'activité met à jour les données.\n\n`;
-                    }
-                }
-            });
-        }
-    });
-    
-    return description;
-}
 
-/**
- * Ajoute les objets de données liés à une activité à la description
- * @param {Object} activity - Activité
- * @param {Object[]} dataObjects - Objets de données
- * @param {string} description - Description en cours
- */
-function addDataObjectsToActivity(activity, dataObjects, description) {
-    const relatedDataObjects = dataObjects.filter(dataObject => 
-        dataObject.associatedActivities && 
-        dataObject.associatedActivities.includes(activity.id)
-    );
-    
-    relatedDataObjects.forEach(dataObject => {
-        const position = dataObject.type === 'magasin' ? 'au-dessus' : 'au-dessous';
-        
-        // Ajouter l'objet de données
-        description += `Tracer un ${dataObject.type} de données « ${dataObject.name} » ${position} de l'activité « ${activity.name} » et `;
-        
-        // Ajouter l'association appropriée
-        if (dataObject.accessMode === 'lecture') {
-            description += `relier le ${dataObject.type} de données « ${dataObject.name} » à l'activité par une association pour indiquer que l'activité lit les données`;
-        } else if (dataObject.accessMode === 'création') {
-            description += `relier l'activité au ${dataObject.type} de données « ${dataObject.name} » par une association pour indiquer que l'activité crée les données`;
-        } else if (dataObject.accessMode === 'mise à jour') {
-            description += `relier l'activité et le ${dataObject.type} de données « ${dataObject.name} » par une association bidirectionnelle pour indiquer que l'activité met à jour les données`;
-        } else {
-            description += `relier ces deux éléments par une association`;
-        }
-        
-        description += '.\n\n';
+    // 3. Activités et flux principaux
+    activities.forEach(activity => {
+        description += `Tracer une activité ${activity.type} "${activity.name}" dans le couloir "${activity.actor}".\n`;
     });
-}
 
-/**
- * Détermine la séquence des éléments dans le processus
- * @param {Object} structure - Structure du processus
- * @return {Object[]} - Séquence des éléments
- */
-function determineElementSequence(structure) {
-    const sequence = [];
-    
-    // Commencer par l'événement de début
-    const startEvent = structure.events.find(e => e.type === 'début');
-    if (startEvent) {
-        sequence.push({
-            type: 'event',
-            eventType: 'début',
-            id: startEvent.id
-        });
-    }
-    
-    // Suivre les flux pour déterminer l'ordre des éléments
-    const visited = new Set();
-    if (startEvent) {
-        visited.add(startEvent.id);
-    }
-    
-    // Trouver les activités dans l'ordre
-    structure.activities.forEach(activity => {
-        if (!visited.has(activity.id)) {
-            sequence.push({
-                type: 'activity',
-                id: activity.id
-            });
-            visited.add(activity.id);
-            
-            // Rechercher les passerelles associées
-            const gatewayAfter = structure.flows.find(flow => 
-                flow.from === activity.id && 
-                flow.to.startsWith('g')
-            );
-            
-            if (gatewayAfter && !visited.has(gatewayAfter.to)) {
-                sequence.push({
-                    type: 'gateway',
-                    id: gatewayAfter.to
-                });
-                visited.add(gatewayAfter.to);
-            }
-            
-            // Rechercher les événements intermédiaires associés
-            const eventAfter = structure.flows.find(flow => 
-                flow.from === activity.id && 
-                flow.to.startsWith('e')
-            );
-            
-            if (eventAfter && !visited.has(eventAfter.to)) {
-                const event = structure.events.find(e => e.id === eventAfter.to);
-                if (event) {
-                    sequence.push({
-                        type: 'event',
-                        eventType: event.type,
-                        id: event.id
-                    });
-                    visited.add(event.id);
-                }
-            }
+    // 4. Passerelles (décisions)
+    decisions.forEach(decision => {
+        description += `Tracer une passerelle exclusive avec la question "${decision.question}" dans le couloir "${decision.actor}".\n`;
+        if (decision.positiveOutcome) {
+            description += `Tracer un flux sortant nommé "Oui" menant à "${decision.positiveOutcome}".\n`;
+        }
+        if (decision.negativeOutcome) {
+            description += `Tracer un flux sortant nommé "Non" menant à "${decision.negativeOutcome}".\n`;
         }
     });
-    
-    // Ajouter les événements de fin
-    structure.events.filter(e => e.type === 'fin').forEach(endEvent => {
-        if (!visited.has(endEvent.id)) {
-            sequence.push({
-                type: 'event',
-                eventType: 'fin',
-                id: endEvent.id
-            });
-            visited.add(endEvent.id);
-        }
-    });
-    
-    return sequence;
-}
 
-/**
- * Met en majuscule la première lettre d'une chaîne
- * @param {string} str - Chaîne à modifier
- * @return {string} - Chaîne avec la première lettre en majuscule
- */
-function capitalizeFirstLetter(str) {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
+    // 5. Données
+    dataObjects.forEach(data => {
+        const type = data.type === 'magasin' ? 'magasin de données' : 'objet de données';
+        description += `Tracer un ${type} nommé "${data.name}".\n`;
+    });
 
-/**
- * Remplit la liste des éléments pour l'affinage de la description
- * @param {Object} structure - Structure du processus
- */
-function populateElementList(structure) {
-    const elementList = document.getElementById('element-list');
-    elementList.innerHTML = '';
-    
-    // Ajouter les activités
-    structure.activities.forEach(activity => {
-        const activityItem = document.createElement('div');
-        activityItem.className = 'element-item';
-        activityItem.innerHTML = `
-            <strong>Activité « ${activity.name} »</strong>
-            <div class="position-selector">
-                <label>Position:</label>
-                <select data-element-id="${activity.id}" data-element-type="activity">
-                    <option value="left" ${activity.position === 'left' ? 'selected' : ''}>À gauche</option>
-                    <option value="right" ${activity.position === 'right' ? 'selected' : ''}>À droite</option>
-                    <option value="above" ${activity.position === 'above' ? 'selected' : ''}>Au-dessus</option>
-                    <option value="below" ${activity.position === 'below' ? 'selected' : ''}>Au-dessous</option>
-                </select>
-            </div>
-        `;
-        elementList.appendChild(activityItem);
+    // 6. Événements intermédiaires
+    events.filter(e => e.type.startsWith('intermédiaire')).forEach(event => {
+        const eventType = event.type.includes('minuterie') ? 'de minuterie' : 'de message';
+        description += `Tracer un événement intermédiaire ${eventType} nommé "${event.name}".\n`;
     });
-    
-    // Ajouter les passerelles
-    structure.gateways.forEach(gateway => {
-        const gatewayItem = document.createElement('div');
-        gatewayItem.className = 'element-item';
-        gatewayItem.innerHTML = `
-            <strong>Passerelle « ${gateway.name} »</strong>
-            <div class="position-selector">
-                <label>Position:</label>
-                <select data-element-id="${gateway.id}" data-element-type="gateway">
-                    <option value="left" ${gateway.position === 'left' ? 'selected' : ''}>À gauche</option>
-                    <option value="right" ${gateway.position === 'right' ? 'selected' : ''}>À droite</option>
-                    <option value="above" ${gateway.position === 'above' ? 'selected' : ''}>Au-dessus</option>
-                    <option value="below" ${gateway.position === 'below' ? 'selected' : ''}>Au-dessous</option>
-                </select>
-            </div>
-        `;
-        elementList.appendChild(gatewayItem);
-    });
-    
-    // Ajouter les objets de données
-    structure.dataObjects.forEach(dataObject => {
-        const dataItem = document.createElement('div');
-        dataItem.className = 'element-item';
-        dataItem.innerHTML = `
-            <strong>${dataObject.type === 'magasin' ? 'Magasin' : 'Objet'} de données « ${dataObject.name} »</strong>
-            <div class="position-selector">
-                <label>Position:</label>
-                <select data-element-id="${dataObject.id}" data-element-type="dataObject">
-                    <option value="above" ${dataObject.position === 'above' ? 'selected' : ''}>Au-dessus</option>
-                    <option value="below" ${dataObject.position === 'below' ? 'selected' : ''}>Au-dessous</option>
-                    <option value="left" ${dataObject.position === 'left' ? 'selected' : ''}>À gauche</option>
-                    <option value="right" ${dataObject.position === 'right' ? 'selected' : ''}>À droite</option>
-                </select>
-            </div>
-        `;
-        elementList.appendChild(dataItem);
-    });
-}
 
-/**
- * Met à jour les positions des éléments dans la structure
- * @param {Object} structure - Structure du processus
- */
-function updateElementPositions(structure) {
-    const positionSelects = document.querySelectorAll('[data-element-id]');
-    
-    positionSelects.forEach(select => {
-        const elementId = select.getAttribute('data-element-id');
-        const elementType = select.getAttribute('data-element-type');
-        const position = select.value;
-        
-        if (elementType === 'activity') {
-            const activity = structure.activities.find(a => a.id === elementId);
-            if (activity) {
-                activity.position = position;
-            }
-        } else if (elementType === 'gateway') {
-            const gateway = structure.gateways.find(g => g.id === elementId);
-            if (gateway) {
-                gateway.position = position;
-            }
-        } else if (elementType === 'dataObject') {
-            const dataObject = structure.dataObjects.find(d => d.id === elementId);
-            if (dataObject) {
-                dataObject.position = position;
-            }
-        }
+    // 7. Événements de fin
+    events.filter(e => e.type === 'fin').forEach(event => {
+        description += `Tracer un événement de fin nommé "${event.name}".\n`;
     });
+
+    return description.trim();
 }
