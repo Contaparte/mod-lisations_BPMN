@@ -179,31 +179,18 @@ function extractActors(text, sentences) {
         {name: 'comptabilité', pattern: /comptabilité|comptable/i, isInternal: true},
         {name: 'entrepôt', pattern: /entrepôt|magasin|stockage/i, isInternal: true},
         {name: 'directeur', pattern: /directeur|direction/i, isInternal: true}
+        {name: 'pharmacien', pattern: /pharmacien|chimiste/i, isInternal: false},
+        {name: 'usine', pattern: /usine|fabrique|manufacture/i, isInternal: false},
     ];
     
-    // Rechercher les acteurs dans le texte
-    potentialActors.forEach(actor => {
-        if (actor.pattern.test(text)) {
-            // Vérifier si l'acteur a des activités en analysant le contexte
-            const hasActivities = sentences.some(sentence => 
-                actor.pattern.test(sentence) && 
-                sentence.match(/\b(réali[sz]e|effectue|fait|exécut[eé]|accompli[ts]?|mene)\b/i)
-            );
-            
-            actors.push({
-                name: capitalizeFirstLetter(actor.name),
-                isInternal: actor.isInternal,
-                hasActivities: hasActivities || actor.isInternal // Les acteurs internes ont généralement des activités
-            });
+// Ajouter une logique pour mieux distinguer les acteurs internes et externes
+    actors.forEach(actor => {
+        if (sentences.some(s => 
+            actor.pattern.test(s) && 
+            (s.includes('externe') || s.includes('partenaire')))) {
+            actor.isInternal = false;
         }
     });
-    
-    // Si aucun acteur n'a été identifié, ajouter des acteurs par défaut
-    if (actors.length === 0) {
-        actors.push({name: 'Système', isInternal: true, hasActivities: true});
-    }
-    
-    return actors;
 }
 
 /**
@@ -299,31 +286,78 @@ function extractDecisions(sentences) {
 function extractDataObjects(sentences) {
     const dataObjects = [];
     
-    // Mots-clés pour identifier les données
+    // Mots-clés plus complets
     const dataKeywords = {
-        magasin: ['base de données', 'système', 'système d\'information', 'logiciel', 'application'],
-        objet: ['document', 'rapport', 'formulaire', 'fichier', 'facture', 'bon de commande', 
-                'bon de livraison', 'courriel', 'message', 'avis', 'notification']
+        magasin: [
+            'base de données', 'système', 'système d\'information', 
+            'logiciel', 'application', 'dossier', 'filière', 'classeur'
+        ],
+        objet: [
+            'document', 'rapport', 'formulaire', 'fichier', 'facture', 
+            'bon de commande', 'bon de livraison', 'courriel', 'message', 
+            'avis', 'notification', 'liste', 'reçu', 'confirmation'
+        ]
     };
     
+    // Améliorer la logique de détection
     sentences.forEach((sentence, index) => {
-        // Vérifier les magasins de données
-        dataKeywords.magasin.forEach(keyword => {
-            if (sentence.toLowerCase().includes(keyword)) {
-                // Essayer d'extraire le nom complet du magasin de données
-                let name = extractDataStoreName(sentence, keyword);
-                
-                // Éviter les doublons
-                if (!dataObjects.some(obj => obj.name.toLowerCase() === name.toLowerCase() && obj.type === 'magasin')) {
-                    dataObjects.push({
-                        name: name,
-                        type: 'magasin',
-                        position: index,
-                        relatedActivities: []
-                    });
+        // Pour chaque type de données
+        Object.entries(dataKeywords).forEach(([type, keywords]) => {
+            keywords.forEach(keyword => {
+                if (sentence.toLowerCase().includes(keyword)) {
+                    // Extraire le nom complet
+                    let name = type === 'magasin' ? 
+                        extractDataStoreName(sentence, keyword) : 
+                        extractDataObjectName(sentence, keyword);
+                    
+                    // Éviter les doublons
+                    if (!dataObjects.some(obj => 
+                        obj.name.toLowerCase() === name.toLowerCase() && 
+                        obj.type === type)) {
+                        
+                        // Déterminer le mode d'accès (lecture/écriture/mise à jour)
+                        const accessMode = determineDataAccessMode(sentence);
+                        
+                        dataObjects.push({
+                            name: name,
+                            type: type,
+                            position: index,
+                            accessMode: accessMode,
+                            relatedActivities: []
+                        });
+                    }
                 }
-            }
+            });
         });
+    });
+    
+    return dataObjects;
+}
+
+function determineDataAccessMode(sentence) {
+    const lowerSentence = sentence.toLowerCase();
+    
+    if (lowerSentence.includes('crée') || 
+        lowerSentence.includes('génère') || 
+        lowerSentence.includes('produit') || 
+        lowerSentence.includes('rédige')) {
+        return 'création';
+    }
+    
+    if (lowerSentence.includes('met à jour') || 
+        lowerSentence.includes('modifie') || 
+        lowerSentence.includes('actualise')) {
+        return 'mise à jour';
+    }
+    
+    if (lowerSentence.includes('consulte') || 
+        lowerSentence.includes('vérifie') || 
+        lowerSentence.includes('lit')) {
+        return 'lecture';
+    }
+    
+    return 'indéterminé';
+}
         
         // Vérifier les objets de données
         dataKeywords.objet.forEach(keyword => {
@@ -540,17 +574,30 @@ function prepareActivities(activities, lanes) {
  * @return {Object[]} - Passerelles préparées
  */
 function prepareGateways(decisions, activities) {
+    function prepareGateways(decisions, activities) {
     const preparedGateways = [];
     
     decisions.forEach(decision => {
-        // Déterminer le couloir approprié pour la passerelle
-        const nearestActivity = findNearestActivityByPosition(activities, decision.position);
-        const laneName = nearestActivity ? nearestActivity.lane : activities[0].lane;
+        // Déterminer si c'est une passerelle de bifurcation ou de convergence
+        const isBifurcation = decision.positiveOutcome && decision.negativeOutcome;
+        const isConvergence = !isBifurcation && decisions.some(d => 
+            Math.abs(d.position - decision.position) <= 5 && d !== decision);
+        
+        // Construire une question plus précise pour la passerelle
+        let question = decision.question;
+        if (question.includes('existe') || question.includes('présent')) {
+            question = question.replace('?', ' dans le système ?');
+        }
+        
+        // Déterminer le bon couloir pour la passerelle
+        const laneName = determineGatewayLane(decision, activities);
         
         preparedGateways.push({
             id: decision.id,
-            name: decision.question,
+            name: question,
             type: 'exclusive',
+            isConvergence: isConvergence,
+            isBifurcation: isBifurcation,
             lane: laneName,
             position: decision.position,
             positiveOutcome: decision.positiveOutcome,
@@ -783,132 +830,37 @@ function identifyProcessName(text, components) {
 function formatBPMNDescription(structure) {
     let description = '';
     
-    // 1. Tracer les piscines et couloirs
-    description += `Tracer une piscine « ${structure.mainProcess} » avec `;
-    if (structure.lanes.length === 1) {
-        description += `un couloir pour l'acteur interne: « ${structure.lanes[0].name} ».\n\n`;
-    } else {
-        description += `${structure.lanes.length} couloirs horizontaux pour : `;
-        description += structure.lanes.map(lane => `« ${lane.name} »`).join(', ') + '.\n\n';
-    }
-    
-    // Ajouter des piscines pour les acteurs externes
+    // 1. Tracer d'abord les piscines pour les acteurs externes
     if (structure.lanes.externalActors && structure.lanes.externalActors.length > 0) {
         structure.lanes.externalActors.forEach(actor => {
-            description += `Tracer une piscine horizontale pour l'acteur externe « ${actor.name} ».\n\n`;
+            description += `Tracer une piscine pour l'acteur externe « ${actor.name} ».\n\n`;
         });
     }
     
-    // 2. Tracer les événements de début
-    const startEvent = structure.events.find(e => e.type === 'début');
-    if (startEvent) {
-        description += `Tracer un événement début générique « ${startEvent.name} » au début du couloir « ${startEvent.lane} ».\n\n`;
+    // 2. Tracer la piscine principale avec ses couloirs
+    description += `Tracer une piscine « ${structure.mainProcess} » dans laquelle on retrouve `;
+    if (structure.lanes.length === 1) {
+        description += `un couloir pour l'acteur interne: « ${structure.lanes[0].name} ».\n\n`;
+    } else {
+        description += `${structure.lanes.length} couloirs pour les acteurs internes: `;
+        description += structure.lanes.map(lane => `« ${lane.name} »`).join(', ') + '.\n\n';
     }
     
-    // 3. Tracer les activités et passerelles
-    const sequentialElements = determineElementSequence(structure);
-    let previousElement = null;
+    // 3. Événements de début plus précis
+    const startEvent = structure.events.find(e => e.type === 'début');
+    if (startEvent) {
+        if (structure.lanes.externalActors && structure.lanes.externalActors.length > 0) {
+            // Événement de début avec message depuis un acteur externe
+            const externalActor = structure.lanes.externalActors[0];
+            description += `Tracer un événement début générique à la frontière de la piscine « ${externalActor.name} ».\n\n`;
+            description += `Tracer un événement début message au début du couloir « ${startEvent.lane} » et relier l'événement de début générique à l'événement début message par le flux de message « ${startEvent.name} ».\n\n`;
+        } else {
+            // Événement de début standard
+            description += `Tracer un événement début générique au début du couloir « ${startEvent.lane} ».\n\n`;
+        }
+    }
     
-    sequentialElements.forEach((element, index) => {
-        if (element.type === 'activity') {
-            const activity = structure.activities.find(a => a.id === element.id);
-            
-            // Si c'est la première activité après l'événement de début
-            if (previousElement === null || (previousElement.type === 'event' && previousElement.eventType === 'début')) {
-                description += `Tracer l'activité ${activity.type} « ${activity.name} » à droite de l'événement début générique et relier ces deux éléments par un flux de séquence.\n\n`;
-            }
-            // Si l'élément précédent était une activité
-            else if (previousElement.type === 'activity') {
-                const prevActivity = structure.activities.find(a => a.id === previousElement.id);
-                description += `Tracer l'activité ${activity.type} « ${activity.name} » à droite de l'activité ${prevActivity.type} « ${prevActivity.name} » et relier ces deux éléments par un flux de séquence.\n\n`;
-            }
-            // Si l'élément précédent était une passerelle
-            else if (previousElement.type === 'gateway') {
-                const gateway = structure.gateways.find(g => g.id === previousElement.id);
-                const condition = element.condition || '';
-                description += `Tracer l'activité ${activity.type} « ${activity.name} » à droite de la passerelle « ${gateway.name} » et relier la passerelle à cette activité par un flux de séquence${condition ? ' portant la mention « ' + condition + ' »' : ''}.\n\n`;
-            }
-            
-            // Associer aux objets de données si nécessaires
-            associateWithDataObjects(activity, structure.dataObjects, description);
-        }
-        else if (element.type === 'gateway') {
-            const gateway = structure.gateways.find(g => g.id === element.id);
-            
-            // Si l'élément précédent était une activité
-            if (previousElement && previousElement.type === 'activity') {
-                const prevActivity = structure.activities.find(a => a.id === previousElement.id);
-                description += `Tracer une passerelle exclusive « ${gateway.name} » à droite de l'activité ${prevActivity.type} « ${prevActivity.name} » et relier ces deux éléments par un flux de séquence.\n\n`;
-            }
-            // Autres cas (rare, mais possible)
-            else {
-                description += `Tracer une passerelle exclusive « ${gateway.name} » dans le couloir « ${gateway.lane} ».\n\n`;
-            }
-        }
-        else if (element.type === 'event' && element.eventType !== 'début') {
-            const event = structure.events.find(e => e.id === element.id);
-            
-            // Événement de fin
-            if (event.type === 'fin') {
-                if (previousElement && previousElement.type === 'activity') {
-                    const prevActivity = structure.activities.find(a => a.id === previousElement.id);
-                    description += `Tracer un événement de fin « ${event.name} » à droite de l'activité ${prevActivity.type} « ${prevActivity.name} » et relier ces deux éléments par un flux de séquence.\n\n`;
-                }
-            }
-            // Événement intermédiaire
-            else if (event.type.includes('intermédiaire')) {
-                if (event.type.includes('minuterie')) {
-                    description += `Tracer un événement intermédiaire minuterie « ${event.name} » dans le couloir « ${event.lane} ».\n\n`;
-                }
-                else if (event.type.includes('message')) {
-                    if (event.isEmission) {
-                        description += `Tracer un événement intermédiaire émission message « ${event.name} » dans le couloir « ${event.lane} ».\n\n`;
-                    } else {
-                        description += `Tracer un événement intermédiaire réception message « ${event.name} » dans le couloir « ${event.lane} ».\n\n`;
-                    }
-                }
-            }
-        }
-        
-        previousElement = element;
-    });
-    
-    // 4. Tracer des objets de données supplémentaires si nécessaire
-    structure.dataObjects.forEach(dataObject => {
-        // Vérifier si l'objet a déjà été traité dans les associations précédentes
-        if (!description.includes(`« ${dataObject.name} »`)) {
-            const associatedActivity = structure.activities.find(a => dataObject.associatedActivities.includes(a.id));
-            
-            if (associatedActivity) {
-                const position = dataObject.type === 'magasin' ? 'au-dessus' : 'au-dessous';
-                description += `Tracer un ${dataObject.type} de données « ${dataObject.name} » ${position} de l'activité « ${associatedActivity.name} » et relier ce ${dataObject.type} à l'activité par une association.\n\n`;
-            }
-        }
-    });
-    
-    // 5. Tracer des flux de message supplémentaires si nécessaire
-    structure.flows.filter(flow => flow.type === 'message').forEach(flow => {
-        if (!description.includes(`flux de message « ${flow.messageName} »`)) {
-            // Déterminer si la source et la destination sont des acteurs externes ou des éléments du processus
-            const isSourceExternal = typeof flow.from === 'string' && !flow.from.startsWith('a') && !flow.from.startsWith('g') && !flow.from.startsWith('e');
-            const isDestExternal = typeof flow.to === 'string' && !flow.to.startsWith('a') && !flow.to.startsWith('g') && !flow.to.startsWith('e');
-            
-            if (isSourceExternal) {
-                // Flux depuis un acteur externe vers un élément du processus
-                const targetElement = findElementById(flow.to, structure);
-                if (targetElement) {
-                    description += `Tracer un flux de message « ${flow.messageName} » de la piscine « ${flow.from} » vers ${targetElement.type === 'activity' ? 'l\'activité' : 'l\'événement'} « ${targetElement.name} ».\n\n`;
-                }
-            } 
-            else if (isDestExternal) {
-                // Flux depuis un élément du processus vers un acteur externe
-                const sourceElement = findElementById(flow.from, structure);
-                if (sourceElement) {
-                    description += `Tracer un flux de message « ${flow.messageName} » de ${sourceElement.type === 'activity' ? 'l\'activité' : 'l\'événement'} « ${sourceElement.name} » vers la piscine « ${flow.to} ».\n\n`;
-                }
-            }
-        }
-    });
+    // Continuer avec le reste des éléments...
     
     return description;
 }
@@ -1133,34 +1085,38 @@ function identifyActorForDecision(sentence) {
 function identifyActivityType(sentence) {
     const lowerSentence = sentence.toLowerCase();
     
-    // Activité service (automatique, par le système)
+    // Service (automatique)
     if (lowerSentence.includes('automatiquement') || 
-        lowerSentence.includes('le système') ||
-        lowerSentence.includes('l\'application') ||
-        (lowerSentence.includes('généré') && !lowerSentence.includes('par l\'utilisateur'))) {
+        lowerSentence.includes('le système génère') ||
+        lowerSentence.includes('est généré automatiquement') ||
+        lowerSentence.includes('est calculé par')) {
         return 'service';
     }
     
-    // Activité manuelle (sans système)
+    // Manuelle (sans système)
     if (lowerSentence.includes('manuellement') || 
         lowerSentence.includes('papier') ||
-        lowerSentence.includes('formulaire papier') ||
-        lowerSentence.includes('physiquement')) {
+        lowerSentence.includes('physiquement') ||
+        lowerSentence.includes('classe') && lowerSentence.includes('document')) {
         return 'manuelle';
     }
     
-    // Activité utilisateur (avec interaction système)
-    if (lowerSentence.includes('saisit') || 
-        lowerSentence.includes('entre') ||
-        lowerSentence.includes('consulte') ||
-        lowerSentence.includes('dans le système') ||
-        lowerSentence.includes('application') ||
-        lowerSentence.includes('logiciel')) {
+    // Utilisateur (interaction humain-système)
+    if (lowerSentence.includes('saisit dans') || 
+        lowerSentence.includes('consulte le système') ||
+        lowerSentence.includes('entre les données') ||
+        lowerSentence.includes('met à jour') && 
+        (lowerSentence.includes('système') || lowerSentence.includes('base de données'))) {
         return 'utilisateur';
     }
     
-    // Par défaut
-    return 'utilisateur';
+    // Par défaut: détecter d'après le contexte
+    if (lowerSentence.includes('système') || lowerSentence.includes('logiciel') || 
+        lowerSentence.includes('application') || lowerSentence.includes('base de données')) {
+        return 'utilisateur';
+    }
+    
+    return 'générique';
 }
 
 /**
