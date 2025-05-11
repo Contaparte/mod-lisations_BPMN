@@ -6,605 +6,877 @@ function generateInstructions() {
         return;
     }
 
-    // Prétraitement du texte
-    const cleanedText = preprocessText(scenarioText);
-    
-    // Analyse du texte
-    const processData = analyzeProcess(cleanedText);
+    // Analyse approfondie du texte
+    const processData = analyzeProcessComprehensively(scenarioText);
     
     // Génération des instructions de modélisation
-    const modelingInstructions = generateModelingSteps(processData);
+    const modelingInstructions = generatePreciseModelingSteps(processData);
     document.getElementById('outputInstructions').innerText = modelingInstructions;
     
     // Génération des concepts BPMN importants
-    const conceptsOutput = generateBPMNConcepts(processData);
+    const conceptsOutput = generateRelevantBPMNConcepts(processData);
     document.getElementById('outputConcepts').innerText = conceptsOutput;
 }
 
-function preprocessText(text) {
-    // Nettoyer le texte pour faciliter l'analyse
-    return text
-        .replace(/\s+/g, ' ')
-        .replace(/\(\w+\)/g, '') // Enlever les parenthèses avec contenu alpha
-        .trim();
-}
-
-function analyzeProcess(text) {
-    // Structure pour stocker les informations analysées
+function analyzeProcessComprehensively(text) {
+    // Structure pour stocker les informations du processus
     const processData = {
         organizations: [],
         roles: [],
         activities: [],
         decisions: [],
         dataObjects: [],
-        dataSources: [],
+        dataStores: [],
         messages: [],
         timers: [],
+        eventStarts: [],
+        eventEnds: [],
         sentences: []
     };
+
+    // Prétraitement du texte
+    const cleanedText = text.replace(/\s+/g, ' ').trim();
     
     // Découper le texte en phrases
-    const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 0);
+    const sentences = splitIntoSentences(cleanedText);
     processData.sentences = sentences;
     
-    // Extraire les noms d'organisations et rôles explicitement mentionnés
-    extractOrganizationsAndRoles(text, processData);
+    // Identifier les organisations et les rôles
+    identifyOrganizationsAndRoles(cleanedText, processData);
     
-    // Analyser chaque phrase
-    sentences.forEach(sentence => {
-        // Identifier les activités
-        findActivities(sentence, processData);
-        
-        // Identifier les décisions
-        findDecisions(sentence, processData);
-        
-        // Identifier les objets de données et magasins de données
-        findDataObjects(sentence, processData);
-        
-        // Identifier les messages
-        findMessages(sentence, processData);
-        
-        // Identifier les minuteries
-        findTimers(sentence, processData);
-    });
+    // Extraire les activités avec leur séquence
+    extractActivitiesWithSequence(sentences, processData);
     
-    // Si aucune organisation n'a été détectée, ajouter une organisation principale
-    if (processData.organizations.length === 0) {
-        inferOrganizationsFromContext(processData);
-    }
+    // Identifier les points de décision
+    identifyDecisionPoints(sentences, processData);
     
+    // Extraire les objets et magasins de données
+    extractDataObjectsAndStores(sentences, processData);
+    
+    // Identifier les flux de message
+    identifyMessageFlows(sentences, processData);
+    
+    // Identifier les événements temporels
+    identifyTimeEvents(sentences, processData);
+    
+    // Identifier les événements de début et de fin
+    identifyStartAndEndEvents(sentences, processData);
+
+    // Effectuer des corrections contextuelles basées sur les cas typiques
+    applyContextualCorrections(processData);
+
     return processData;
 }
 
-function extractOrganizationsAndRoles(text, processData) {
-    // Liste de mots clés pour les organisations
-    const organizationKeywords = [
-        { name: "pharmacie", standardName: "Pharmacie" },
-        { name: "club optique", standardName: "Club Optique" },
-        { name: "service livraison", standardName: "Service livraison" },
-        { name: "service client", standardName: "Service client" },
-        { name: "entreprise", standardName: "Entreprise" },
-        { name: "société", standardName: "Société" },
-        { name: "fournisseur", standardName: "Fournisseur" },
-        { name: "banque", standardName: "Banque" },
-        { name: "hôpital", standardName: "Hôpital" },
-        { name: "université", standardName: "Université" }
-    ];
-    
-    // Liste de mots clés pour les rôles
-    const roleKeywords = [
-        { name: "pharmacien", standardName: "Pharmacien" },
-        { name: "représentant", standardName: "Représentant" },
-        { name: "préposé à la livraison", standardName: "Préposé à la livraison" },
-        { name: "client", standardName: "Client" },
-        { name: "chef d'équipe", standardName: "Chef d'équipe" },
-        { name: "manager", standardName: "Manager" },
-        { name: "responsable", standardName: "Responsable" },
-        { name: "comptable", standardName: "Comptable" },
-        { name: "superviseur", standardName: "Superviseur" },
-        { name: "vendeur", standardName: "Vendeur" },
-        { name: "préposé", standardName: "Préposé" }
-    ];
-    
-    const lowerText = text.toLowerCase();
-    
-    // Chercher les organisations
-    organizationKeywords.forEach(org => {
-        if (lowerText.includes(org.name) && !processData.organizations.includes(org.standardName)) {
-            processData.organizations.push(org.standardName);
-        }
-    });
-    
-    // Chercher les rôles
-    roleKeywords.forEach(role => {
-        if (lowerText.includes(role.name) && !processData.roles.includes(role.standardName)) {
-            processData.roles.push(role.standardName);
-        }
-    });
+function splitIntoSentences(text) {
+    // Diviser le texte en phrases tout en gérant les cas particuliers
+    return text.split(/(?<=[.!?])\s+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
 }
 
-function inferOrganizationsFromContext(processData) {
-    // Déterminer le contexte principal à partir des rôles et du contenu
-    let mainOrg = "Organisation";
+function identifyOrganizationsAndRoles(text, processData) {
+    // Définir des règles spécifiques pour identifier les organisations
+    const organizationPatterns = [
+        { pattern: /club\s*optique/i, name: "Club Optique" },
+        { pattern: /pharmacie/i, name: "Pharmacie" },
+        { pattern: /service\s*(?:de\s*)?livraison/i, name: "Service livraison" },
+        { pattern: /entreprise/i, name: "Entreprise" },
+        { pattern: /société/i, name: "Société" },
+        { pattern: /fournisseur/i, name: "Fournisseur" },
+        { pattern: /client/i, name: "Client" }
+    ];
     
-    if (processData.roles.includes("Pharmacien")) {
-        processData.organizations.push("Pharmacie");
+    // Définir des règles spécifiques pour identifier les rôles
+    const rolePatterns = [
+        { pattern: /pharmacien/i, name: "Pharmacien", org: "Pharmacie" },
+        { pattern: /représentant/i, name: "Représentant", org: "Club Optique" },
+        { pattern: /préposé\s*(?:à\s*la\s*)?livraison/i, name: "Préposé à la livraison", org: "Club Optique" },
+        { pattern: /service\s*(?:de\s*)?livraison/i, name: "Service livraison", org: "Club Optique" },
+        { pattern: /vendeur/i, name: "Vendeur", org: "Club Optique" },
+        { pattern: /chef\s*d['']équipe/i, name: "Chef d'équipe", org: "Club Optique" },
+        { pattern: /responsable/i, name: "Responsable", org: "Club Optique" },
+        { pattern: /client/i, name: "Client", org: "Client" }
+    ];
+    
+    // Identifier les organisations
+    for (const orgPattern of organizationPatterns) {
+        if (orgPattern.pattern.test(text) && !processData.organizations.includes(orgPattern.name)) {
+            processData.organizations.push(orgPattern.name);
+        }
     }
     
-    if (processData.roles.some(role => 
-        ["Représentant", "Préposé à la livraison", "Service livraison"].includes(role))) {
+    // Identifier les rôles
+    for (const rolePattern of rolePatterns) {
+        if (rolePattern.pattern.test(text) && !processData.roles.some(role => role.name === rolePattern.name)) {
+            processData.roles.push({
+                name: rolePattern.name,
+                organization: rolePattern.org
+            });
+            
+            // S'assurer que l'organisation associée est ajoutée
+            if (!processData.organizations.includes(rolePattern.org) && 
+                rolePattern.org !== "Club Optique" && rolePattern.org !== "Client") {
+                processData.organizations.push(rolePattern.org);
+            }
+        }
+    }
+    
+    // Consolidation des organisations
+    if (processData.roles.some(role => role.organization === "Club Optique") && 
+        !processData.organizations.includes("Club Optique")) {
         processData.organizations.push("Club Optique");
     }
     
-    // Ajouter une organisation par défaut si nécessaire
-    if (processData.organizations.length === 0) {
-        processData.organizations.push("Organisation principale");
-    }
-}
-
-function findActivities(sentence, processData) {
-    const activityVerbs = [
-        "reçoit", "valide", "vérifie", "crée", "saisit", "note", "calcule", 
-        "photocopie", "classe", "identifie", "crée", "récupère", "emballe", 
-        "place", "envoie", "livre", "expédie", "avise", "consulte", "produit",
-        "imprime", "remplit", "prépare", "contacte", "appelle", "traite",
-        "génère", "échange", "examine", "analyse", "met à jour", "supprime"
-    ];
-    
-    const lowerSentence = sentence.toLowerCase();
-    
-    // Déterminer si la phrase contient une activité
-    let containsActivity = false;
-    let verbFound = null;
-    let verbIndex = -1;
-    
-    for (const verb of activityVerbs) {
-        const index = lowerSentence.indexOf(verb);
-        if (index !== -1) {
-            containsActivity = true;
-            verbFound = verb;
-            verbIndex = index;
-            break;
+    // Cas particulier pour Club Optique
+    if (text.includes("Club Optique") || 
+        text.includes("club optique") || 
+        processData.roles.some(role => role.organization === "Club Optique")) {
+        
+        if (!processData.organizations.includes("Club Optique")) {
+            processData.organizations.push("Club Optique");
+        }
+        
+        // Ajouter automatiquement le Service livraison si non détecté
+        const hasServiceLivraison = processData.roles.some(role => role.name === "Service livraison");
+        if (!hasServiceLivraison && text.includes("livraison")) {
+            processData.roles.push({
+                name: "Service livraison",
+                organization: "Club Optique"
+            });
         }
     }
     
-    if (containsActivity) {
-        // Déterminer le type d'activité
-        let activityType = determineActivityType(lowerSentence);
-        
-        // Extraire la description de l'activité
-        let activityDescription = extractActivityDescription(lowerSentence, verbFound, verbIndex);
-        
-        // Déterminer l'acteur associé à l'activité
-        let actor = determineActivityActor(lowerSentence, processData.roles);
-        
-        // Ajouter l'activité à la liste
-        processData.activities.push({
-            description: activityDescription,
-            type: activityType,
-            actor: actor,
-            fullSentence: sentence
-        });
+    // Si aucune organisation n'est détectée, ajouter une par défaut
+    if (processData.organizations.length === 0) {
+        processData.organizations.push("Organisation");
     }
 }
 
-function determineActivityType(sentence) {
-    // Détermine le type d'activité (manuelle, utilisateur, service)
-    if (sentence.includes("système") && 
-        (sentence.includes("automatiquement") || 
-         sentence.includes("calcule automatiquement") || 
-         sentence.includes("génère automatiquement"))) {
+function extractActivitiesWithSequence(sentences, processData) {
+    // Extraire les activités et leur séquence
+    const activityWords = [
+        "reçoit", "valide", "vérifie", "consulte", "saisit", "note", "calcule",
+        "photocopie", "classe", "identifie", "crée", "récupère", "emballe",
+        "place", "envoie", "livre", "prépare", "contacte", "appelle", "traite"
+    ];
+    
+    let activityNumber = 1;
+    
+    sentences.forEach((sentence, sentenceIndex) => {
+        let sentenceLower = sentence.toLowerCase();
+        
+        // Vérifier si la phrase contient une activité
+        const containsActivity = activityWords.some(word => sentenceLower.includes(word));
+        
+        if (containsActivity) {
+            // Déterminer le type d'activité
+            let activityType = determineActivityType(sentenceLower);
+            
+            // Déterminer le rôle responsable
+            let responsibleRole = determineResponsibleRole(sentenceLower, processData.roles);
+            
+            // Extraction du verbe principal et de la description
+            let activityDescription = extractActivityDescription(sentence, activityWords);
+            
+            // Corriger la description si nécessaire
+            if (activityDescription.length > 60) {
+                activityDescription = activityDescription.substring(0, 57) + "...";
+            }
+            
+            // Ajouter l'activité à la liste
+            processData.activities.push({
+                id: activityNumber++,
+                description: activityDescription,
+                type: activityType,
+                role: responsibleRole,
+                sentenceIndex: sentenceIndex,
+                fullSentence: sentence
+            });
+        }
+    });
+    
+    // Établir la séquence des activités
+    establishActivitySequence(processData);
+}
+
+function determineActivityType(sentenceLower) {
+    // Déterminer le type d'activité (manuelle, utilisateur, service)
+    if (sentenceLower.includes("système") && 
+        (sentenceLower.includes("automatiquement") || 
+         sentenceLower.includes("génère") || 
+         sentenceLower.includes("envoie automatiquement"))) {
         return "service";
-    } else if (sentence.includes("système") || 
-              sentence.includes("base de données") || 
-              sentence.includes("logiciel") || 
-              sentence.includes("saisit dans") || 
-              sentence.includes("ordinateur") ||
-              sentence.includes("application")) {
+    } else if (sentenceLower.includes("système") || 
+              sentenceLower.includes("base de données") || 
+              sentenceLower.includes("saisit dans le système") || 
+              sentenceLower.includes("application") ||
+              sentenceLower.includes("logiciel")) {
         return "utilisateur";
     } else {
         return "manuelle";
     }
 }
 
-function extractActivityDescription(sentence, verb, verbIndex) {
-    // Extraire la description complète de l'activité
-    let start = verbIndex;
-    
-    // Reculer pour inclure le sujet si nécessaire
-    let subjectStart = findSubjectStart(sentence, start);
-    if (subjectStart > 0) {
-        start = subjectStart;
-    }
-    
-    // Trouver la fin de la description
-    let end = sentence.indexOf(".", start);
-    if (end === -1) end = sentence.indexOf(",", start);
-    if (end === -1) end = sentence.length;
-    
-    // Extracting a meaningful description
-    let description = sentence.substring(start, end).trim();
-    
-    // Limiter la longueur de la description
-    if (description.length > 60) {
-        description = description.substring(0, 57) + "...";
-    }
-    
-    return description;
-}
-
-function findSubjectStart(sentence, verbIndex) {
-    // Trouve le début du sujet avant le verbe
-    let potentialSubjectStart = sentence.lastIndexOf(" ", verbIndex - 2);
-    if (potentialSubjectStart === -1) return 0;
-    
-    // Vérifier si c'est un article ou une préposition
-    const articlesEtPrepositions = [" le ", " la ", " les ", " un ", " une ", " des ", " à ", " de ", " par ", " pour "];
-    for (const article of articlesEtPrepositions) {
-        if (sentence.substring(potentialSubjectStart - article.length + 1, potentialSubjectStart + 1) === article) {
-            return potentialSubjectStart - article.length + 1;
-        }
-    }
-    
-    return potentialSubjectStart + 1;
-}
-
-function determineActivityActor(sentence, roles) {
-    // Déterminer l'acteur associé à l'activité
+function determineResponsibleRole(sentenceLower, roles) {
+    // Déterminer le rôle responsable de l'activité
     for (const role of roles) {
-        if (sentence.toLowerCase().includes(role.toLowerCase())) {
-            return role;
+        if (sentenceLower.includes(role.name.toLowerCase())) {
+            return role.name;
         }
     }
     
-    // Acteurs génériques basés sur le contenu
-    if (sentence.includes("préposé") || sentence.includes("livraison")) {
+    // Inférence basée sur le contexte
+    if (sentenceLower.includes("livraison") && !sentenceLower.includes("service de livraison")) {
         return "Préposé à la livraison";
-    } else if (sentence.includes("représentant") || sentence.includes("service client")) {
+    } else if (sentenceLower.includes("représentant") || sentenceLower.includes("service client")) {
         return "Représentant";
-    } else if (sentence.includes("pharmacien") || sentence.includes("client")) {
-        return "Pharmacien";
+    } else if (sentenceLower.includes("service de livraison")) {
+        return "Service livraison";
     }
     
-    return "Non spécifié";
+    // Valeur par défaut
+    return roles.length > 0 ? roles[0].name : "Non spécifié";
 }
 
-function findDecisions(sentence, processData) {
-    const decisionKeywords = [
-        "si", "sinon", "lorsque", "quand", "dans le cas où",
-        "si le", "si la", "si les", "selon que", "condition",
-        "est-ce que", "vérifier si"
-    ];
-    
+function extractActivityDescription(sentence, activityWords) {
+    // Extraire une description significative de l'activité
     const lowerSentence = sentence.toLowerCase();
     
-    // Vérifier si la phrase contient une décision
-    let containsDecision = false;
-    let keywordFound = null;
-    let keywordIndex = -1;
+    // Trouver le mot d'activité dans la phrase
+    let activityWord = null;
+    let activityIndex = -1;
     
-    for (const keyword of decisionKeywords) {
-        const index = lowerSentence.indexOf(keyword);
+    for (const word of activityWords) {
+        const index = lowerSentence.indexOf(word);
         if (index !== -1) {
-            containsDecision = true;
-            keywordFound = keyword;
-            keywordIndex = index;
+            activityWord = word;
+            activityIndex = index;
             break;
         }
     }
     
-    if (containsDecision) {
-        // Extraire la condition complète
-        const condition = extractDecisionCondition(lowerSentence, keywordFound, keywordIndex);
-        
-        // Trouver les résultats possibles (oui/non, positif/négatif)
-        const outcomes = inferDecisionOutcomes(lowerSentence, condition);
-        
-        // Déterminer l'acteur qui prend la décision
-        const actor = determineDecisionActor(lowerSentence, processData.roles);
-        
-        // Ajouter la décision à la liste
-        processData.decisions.push({
-            condition: condition,
-            outcomes: outcomes,
-            actor: actor,
-            fullSentence: sentence
-        });
+    if (activityIndex === -1) {
+        // Si aucun mot d'activité n'est trouvé, utiliser la phrase entière
+        return sentence;
     }
+    
+    // Déterminer les points de délimitation
+    let startIndex = lowerSentence.lastIndexOf(".", activityIndex);
+    startIndex = startIndex === -1 ? 0 : startIndex + 1;
+    
+    let endIndex = lowerSentence.indexOf(".", activityIndex);
+    endIndex = endIndex === -1 ? lowerSentence.length : endIndex;
+    
+    // Extraire et nettoyer la description
+    return sentence.substring(startIndex, endIndex).trim();
 }
 
-function extractDecisionCondition(sentence, keyword, keywordIndex) {
-    // Extraire la condition complète
-    let endIndex = sentence.indexOf(",", keywordIndex);
+function establishActivitySequence(processData) {
+    // Établir la séquence des activités
+    processData.activities.forEach((activity, index) => {
+        if (index < processData.activities.length - 1) {
+            activity.nextActivity = processData.activities[index + 1].id;
+        }
+    });
+}
+
+function identifyDecisionPoints(sentences, processData) {
+    // Identifier les points de décision dans le processus
+    const decisionKeywords = ["si", "sinon", "lorsque", "quand", "dans le cas où", "condition"];
+    
+    sentences.forEach((sentence, index) => {
+        const sentenceLower = sentence.toLowerCase();
+        
+        // Vérifier si la phrase contient un point de décision
+        let containsDecisionPoint = false;
+        let matchedKeyword = "";
+        
+        for (const keyword of decisionKeywords) {
+            if (sentenceLower.includes(keyword)) {
+                containsDecisionPoint = true;
+                matchedKeyword = keyword;
+                break;
+            }
+        }
+        
+        if (containsDecisionPoint) {
+            // Extraire la condition de décision
+            const condition = extractDecisionCondition(sentence, matchedKeyword);
+            
+            // Identifier les activités associées
+            const nearbyActivities = findNearbyActivities(index, processData.activities);
+            
+            // Ajouter la décision à la liste
+            processData.decisions.push({
+                condition: condition,
+                sentenceIndex: index,
+                fullSentence: sentence,
+                relatedActivities: nearbyActivities,
+                outcomes: extractDecisionOutcomes(sentenceLower)
+            });
+        }
+    });
+    
+    // Optimisations spécifiques pour les types communs de décisions
+    optimizeDecisions(processData);
+}
+
+function extractDecisionCondition(sentence, keyword) {
+    // Extraire la condition de décision
+    const sentenceLower = sentence.toLowerCase();
+    const keywordIndex = sentenceLower.indexOf(keyword);
+    
+    // Trouver la fin de la condition
+    let endIndex = sentence.indexOf("?", keywordIndex);
     if (endIndex === -1) endIndex = sentence.indexOf(".", keywordIndex);
+    if (endIndex === -1) endIndex = sentence.indexOf(",", keywordIndex);
     if (endIndex === -1) endIndex = sentence.length;
     
+    // Extraire la condition complète
     return sentence.substring(keywordIndex, endIndex).trim();
 }
 
-function inferDecisionOutcomes(sentence, condition) {
-    // Inférer les résultats possibles de la décision
-    const positiveOutcomes = ["oui", "vrai", "existe", "approuvé", "accepté", "valide", "trouvé", "présent"];
-    const negativeOutcomes = ["non", "faux", "n'existe pas", "refusé", "rejeté", "invalide", "non trouvé", "absent"];
-    
-    let outcomes = {
-        positive: "Oui",
-        negative: "Non"
-    };
-    
-    // Chercher des termes spécifiques dans la phrase qui indiqueraient des résultats personnalisés
-    for (const outcome of positiveOutcomes) {
-        if (sentence.includes(outcome)) {
-            outcomes.positive = capitalizeFirstLetter(outcome);
-            break;
-        }
-    }
-    
-    for (const outcome of negativeOutcomes) {
-        if (sentence.includes(outcome)) {
-            outcomes.negative = capitalizeFirstLetter(outcome);
-            break;
-        }
-    }
-    
-    return outcomes;
+function findNearbyActivities(sentenceIndex, activities) {
+    // Trouver les activités proches d'une phrase
+    return activities
+        .filter(activity => Math.abs(activity.sentenceIndex - sentenceIndex) <= 2)
+        .map(activity => activity.id);
 }
 
-function determineDecisionActor(sentence, roles) {
-    // Déterminer qui prend la décision
-    for (const role of roles) {
-        if (sentence.toLowerCase().includes(role.toLowerCase())) {
-            return role;
-        }
+function extractDecisionOutcomes(sentenceLower) {
+    // Extraire les résultats possibles d'une décision
+    let positiveOutcome = "Oui";
+    let negativeOutcome = "Non";
+    
+    // Chercher des résultats spécifiques
+    if (sentenceLower.includes("existe")) {
+        positiveOutcome = "Existe";
+        negativeOutcome = "N'existe pas";
+    } else if (sentenceLower.includes("valide")) {
+        positiveOutcome = "Valide";
+        negativeOutcome = "Invalide";
+    } else if (sentenceLower.includes("autorisé")) {
+        positiveOutcome = "Autorisé";
+        negativeOutcome = "Non autorisé";
+    } else if (sentenceLower.includes("approuv")) {
+        positiveOutcome = "Approuvé";
+        negativeOutcome = "Refusé";
     }
     
-    // Acteur par défaut basé sur le contenu
-    if (sentence.includes("préposé") || sentence.includes("livraison")) {
-        return "Préposé à la livraison";
-    } else if (sentence.includes("représentant") || sentence.includes("service client")) {
-        return "Représentant";
-    }
-    
-    return "Non spécifié";
+    return { positive: positiveOutcome, negative: negativeOutcome };
 }
 
-function findDataObjects(sentence, processData) {
+function optimizeDecisions(processData) {
+    // Optimisations pour les types courants de décisions
+    
+    // Cas particulier: Validation du pharmacien
+    const pharmacienValidationIndex = processData.decisions.findIndex(
+        decision => decision.condition.toLowerCase().includes("pharmacien") && 
+                  decision.condition.toLowerCase().includes("autorisé")
+    );
+    
+    if (pharmacienValidationIndex !== -1) {
+        processData.decisions[pharmacienValidationIndex].condition = "Pharmacien sur la liste?";
+        processData.decisions[pharmacienValidationIndex].outcomes = { positive: "Oui", negative: "Non" };
+    }
+    
+    // Cas particulier: Montant de commande
+    const montantCommandeIndex = processData.decisions.findIndex(
+        decision => decision.condition.toLowerCase().includes("montant") &&
+                   decision.condition.toLowerCase().includes("commande")
+    );
+    
+    if (montantCommandeIndex !== -1) {
+        const condition = processData.decisions[montantCommandeIndex].condition.toLowerCase();
+        if (condition.includes("500") || condition.includes("cinq cents")) {
+            processData.decisions[montantCommandeIndex].condition = "Montant > 500€?";
+            processData.decisions[montantCommandeIndex].outcomes = { positive: "Oui", negative: "Non" };
+        }
+    }
+}
+
+function extractDataObjectsAndStores(sentences, processData) {
+    // Extraire les objets et magasins de données
     const dataObjectKeywords = [
-        { keyword: "commande", standardName: "Commande" },
-        { keyword: "bon de commande", standardName: "Bon de commande" },
-        { keyword: "liste des pharmaciens", standardName: "Liste des pharmaciens" },
-        { keyword: "liste papier des pharmaciens", standardName: "Liste des pharmaciens" },
-        { keyword: "formulaire", standardName: "Formulaire" },
-        { keyword: "formulaire de livraison", standardName: "Formulaire de livraison" },
-        { keyword: "document", standardName: "Document" },
-        { keyword: "facture", standardName: "Facture" },
-        { keyword: "produit", standardName: "Produit" },
-        { keyword: "copie", standardName: "Copie" },
-        { keyword: "dossier", standardName: "Dossier" }
+        { pattern: /(?:bon de|formulaire de) commande/i, name: "Bon de commande" },
+        { pattern: /commande/i, name: "Commande" },
+        { pattern: /formulaire de livraison/i, name: "Formulaire de livraison" },
+        { pattern: /liste (?:des|de) pharmaciens/i, name: "Liste des pharmaciens" },
+        { pattern: /copie/i, name: "Copie" },
+        { pattern: /produit/i, name: "Produit" },
+        { pattern: /facture/i, name: "Facture" }
     ];
     
     const dataStoreKeywords = [
-        { keyword: "base de données", standardName: "Base de données" },
-        { keyword: "filière", standardName: "Filière" },
-        { keyword: "filière des commandes", standardName: "Filière des commandes" },
-        { keyword: "dossier des livraisons", standardName: "Dossier des livraisons" },
-        { keyword: "système", standardName: "Système" },
-        { keyword: "système d'information", standardName: "Système d'information" },
-        { keyword: "registre", standardName: "Registre" },
-        { keyword: "archive", standardName: "Archives" }
+        { pattern: /filière des commandes/i, name: "Filière des commandes" },
+        { pattern: /dossier des livraisons/i, name: "Dossier des livraisons" },
+        { pattern: /base de données/i, name: "Base de données" },
+        { pattern: /système/i, name: "Système" }
     ];
     
-    const lowerSentence = sentence.toLowerCase();
-    
-    // Rechercher les objets de données
-    for (const dataObj of dataObjectKeywords) {
-        if (lowerSentence.includes(dataObj.keyword)) {
-            // Vérifier si cet objet de données existe déjà
-            if (!processData.dataObjects.some(obj => obj.name === dataObj.standardName)) {
-                // Déterminer les activités liées
-                const relatedActivity = processData.activities.find(activity => 
-                    activity.fullSentence.toLowerCase().includes(dataObj.keyword)
-                );
+    sentences.forEach((sentence, index) => {
+        // Chercher les objets de données
+        for (const dataKeyword of dataObjectKeywords) {
+            if (dataKeyword.pattern.test(sentence) && 
+                !processData.dataObjects.some(obj => obj.name === dataKeyword.name)) {
                 
-                // Déterminer le type d'interaction (lecture, création, mise à jour)
-                const interactionType = determineDataInteraction(lowerSentence, dataObj.keyword);
+                // Déterminer le type d'interaction
+                const interaction = determineDataInteraction(sentence.toLowerCase());
+                
+                // Trouver l'activité liée
+                const relatedActivity = findRelatedActivity(index, processData.activities);
                 
                 processData.dataObjects.push({
-                    name: dataObj.standardName,
-                    interaction: interactionType,
-                    relatedActivity: relatedActivity ? relatedActivity.description : null,
-                    mentioned: sentence
+                    name: dataKeyword.name,
+                    interaction: interaction,
+                    sentenceIndex: index,
+                    relatedActivity: relatedActivity
                 });
             }
         }
-    }
-    
-    // Rechercher les magasins de données
-    for (const dataStore of dataStoreKeywords) {
-        if (lowerSentence.includes(dataStore.keyword)) {
-            // Vérifier si ce magasin de données existe déjà
-            if (!processData.dataSources.some(src => src.name === dataStore.standardName)) {
-                // Déterminer les activités liées
-                const relatedActivity = processData.activities.find(activity => 
-                    activity.fullSentence.toLowerCase().includes(dataStore.keyword)
-                );
+        
+        // Chercher les magasins de données
+        for (const storeKeyword of dataStoreKeywords) {
+            if (storeKeyword.pattern.test(sentence) && 
+                !processData.dataStores.some(store => store.name === storeKeyword.name)) {
                 
-                // Déterminer le type d'interaction (lecture, création, mise à jour)
-                const interactionType = determineDataInteraction(lowerSentence, dataStore.keyword);
+                // Déterminer le type d'interaction
+                const interaction = determineDataInteraction(sentence.toLowerCase());
                 
-                processData.dataSources.push({
-                    name: dataStore.standardName,
-                    interaction: interactionType,
-                    relatedActivity: relatedActivity ? relatedActivity.description : null,
-                    mentioned: sentence
+                // Trouver l'activité liée
+                const relatedActivity = findRelatedActivity(index, processData.activities);
+                
+                processData.dataStores.push({
+                    name: storeKeyword.name,
+                    interaction: interaction,
+                    sentenceIndex: index,
+                    relatedActivity: relatedActivity
                 });
             }
+        }
+    });
+    
+    // Cas particulier pour Club Optique: ajout implicite de la liste des pharmaciens
+    if (!processData.dataObjects.some(obj => obj.name === "Liste des pharmaciens") && 
+        sentences.some(s => s.toLowerCase().includes("pharmacien") && 
+                        (s.toLowerCase().includes("liste") || 
+                         s.toLowerCase().includes("autorisé") || 
+                         s.toLowerCase().includes("vérifie")))) {
+        
+        // Trouver l'activité de vérification
+        const verificationActivity = processData.activities.find(a => 
+            a.description.toLowerCase().includes("valide") || 
+            a.description.toLowerCase().includes("vérifie") || 
+            a.description.toLowerCase().includes("consulte"));
+        
+        if (verificationActivity) {
+            processData.dataObjects.push({
+                name: "Liste des pharmaciens",
+                interaction: "lecture",
+                sentenceIndex: verificationActivity.sentenceIndex,
+                relatedActivity: verificationActivity.id
+            });
         }
     }
 }
 
-function determineDataInteraction(sentence, dataKeyword) {
-    // Déterminer si l'interaction est une lecture, création ou mise à jour
-    const creationVerbs = ["crée", "génère", "produit", "rédige", "établit", "prépare"];
-    const readingVerbs = ["consulte", "vérifie", "lit", "examine", "regarde", "voit"];
-    const updateVerbs = ["met à jour", "modifie", "change", "actualise", "édite", "complète"];
-    
-    for (const verb of creationVerbs) {
-        if (sentence.includes(verb) && sentence.indexOf(verb) < sentence.indexOf(dataKeyword)) {
-            return "création";
-        }
-    }
-    
-    for (const verb of readingVerbs) {
-        if (sentence.includes(verb) && sentence.indexOf(verb) < sentence.indexOf(dataKeyword)) {
-            return "lecture";
-        }
-    }
-    
-    for (const verb of updateVerbs) {
-        if (sentence.includes(verb) && sentence.indexOf(verb) < sentence.indexOf(dataKeyword)) {
-            return "mise à jour";
-        }
-    }
-    
-    // Inférer en fonction du contexte
-    if (sentence.includes("classe") || sentence.includes("classement") || 
-        sentence.includes("stocke") || sentence.includes("enregistre") ||
-        sentence.includes("photocopie")) {
+function determineDataInteraction(sentenceLower) {
+    // Déterminer le type d'interaction avec les données
+    if (sentenceLower.includes("crée") || 
+        sentenceLower.includes("génère") || 
+        sentenceLower.includes("produit") || 
+        sentenceLower.includes("rédige")) {
         return "création";
+    } else if (sentenceLower.includes("met à jour") || 
+              sentenceLower.includes("modifie") || 
+              sentenceLower.includes("change")) {
+        return "mise à jour";
+    } else {
+        return "lecture";
     }
-    
-    // Interaction par défaut
-    return "lecture";
 }
 
-function findMessages(sentence, processData) {
-    const messagingVerbs = ["envoie", "transmet", "expédie", "communique", "notifie", "informe", "contacte", "appelle"];
+function findRelatedActivity(sentenceIndex, activities) {
+    // Trouver l'activité la plus proche d'une phrase
+    const closestActivity = activities
+        .reduce((closest, current) => {
+            const currentDiff = Math.abs(current.sentenceIndex - sentenceIndex);
+            const closestDiff = closest ? Math.abs(closest.sentenceIndex - sentenceIndex) : Infinity;
+            return currentDiff < closestDiff ? current : closest;
+        }, null);
     
-    const lowerSentence = sentence.toLowerCase();
+    return closestActivity ? closestActivity.id : null;
+}
+
+function identifyMessageFlows(sentences, processData) {
+    // Identifier les flux de message dans le processus
+    const messageKeywords = ["envoie", "transmet", "communique", "notifie", "informe", "contacte", "appelle"];
     
-    // Vérifier si la phrase contient un échange de message
-    let containsMessage = false;
-    let verbFound = null;
-    let verbIndex = -1;
+    sentences.forEach((sentence, index) => {
+        const sentenceLower = sentence.toLowerCase();
+        
+        // Vérifier si la phrase contient un échange de message
+        const hasMessageFlow = messageKeywords.some(keyword => sentenceLower.includes(keyword));
+        
+        if (hasMessageFlow) {
+            // Déterminer les participants de la communication
+            const { sender, receiver } = determineMessageParticipants(sentenceLower, processData.roles);
+            
+            // Déterminer le contenu du message
+            const content = determineMessageContent(sentence);
+            
+            // Trouver l'activité liée
+            const relatedActivity = findRelatedActivity(index, processData.activities);
+            
+            // Ajouter le flux de message
+            processData.messages.push({
+                sender: sender,
+                receiver: receiver,
+                content: content,
+                sentenceIndex: index,
+                relatedActivity: relatedActivity
+            });
+        }
+    });
     
-    for (const verb of messagingVerbs) {
-        const index = lowerSentence.indexOf(verb);
-        if (index !== -1) {
-            containsMessage = true;
-            verbFound = verb;
-            verbIndex = index;
-            break;
+    // Cas particulier pour Club Optique
+    if (processData.organizations.includes("Club Optique") && 
+        processData.organizations.includes("Pharmacie") && 
+        !processData.messages.some(msg => 
+            (msg.sender === "Pharmacien" && msg.receiver === "Représentant") || 
+            (msg.sender === "Représentant" && msg.receiver === "Pharmacien"))) {
+        
+        // Ajouter un flux de message implicite
+        const pharmacienActivity = processData.activities.find(a => 
+            a.description.toLowerCase().includes("contact") || 
+            a.description.toLowerCase().includes("téléphone") || 
+            a.description.toLowerCase().includes("appelle"));
+        
+        if (pharmacienActivity) {
+            processData.messages.push({
+                sender: "Pharmacien",
+                receiver: "Représentant",
+                content: "Commande",
+                sentenceIndex: pharmacienActivity.sentenceIndex,
+                relatedActivity: pharmacienActivity.id
+            });
         }
     }
-    
-    if (containsMessage) {
-        // Déterminer l'expéditeur et le destinataire
-        const { sender, receiver } = determineMessageParticipants(lowerSentence, processData.roles);
-        
-        // Déterminer le contenu du message
-        const content = determineMessageContent(lowerSentence, verbFound, verbIndex);
-        
-        // Ajouter le message à la liste
-        processData.messages.push({
-            sender: sender,
-            receiver: receiver,
-            content: content,
-            fullSentence: sentence
-        });
-    }
 }
 
-function determineMessageParticipants(sentence, roles) {
+function determineMessageParticipants(sentenceLower, roles) {
+    // Déterminer les participants d'un échange de message
     let sender = "Non spécifié";
     let receiver = "Non spécifié";
     
-    // Chercher les participants parmi les rôles connus
+    // Chercher les participants potentiels
     for (const role of roles) {
-        if (sentence.includes(role.toLowerCase())) {
+        const roleLower = role.name.toLowerCase();
+        if (sentenceLower.includes(roleLower)) {
             if (sender === "Non spécifié") {
-                sender = role;
-            } else if (receiver === "Non spécifié" && sender !== role) {
-                receiver = role;
+                sender = role.name;
+            } else if (receiver === "Non spécifié" && role.name !== sender) {
+                receiver = role.name;
             }
         }
     }
     
-    // Inférer à partir du contexte si nécessaire
+    // Inférence contextuelle
     if (sender === "Non spécifié" || receiver === "Non spécifié") {
-        if (sentence.includes("représentant") && sentence.includes("pharmacien")) {
-            sender = "Représentant";
-            receiver = "Pharmacien";
-        } else if (sentence.includes("préposé") && sentence.includes("service livraison")) {
-            sender = "Préposé à la livraison";
-            receiver = "Service livraison";
-        } else if (sentence.includes("service livraison") && sentence.includes("pharmacien")) {
-            sender = "Service livraison";
-            receiver = "Pharmacien";
-        }
-    }
-    
-    // Si aucun destinataire n'est trouvé, inférer en fonction du contenu
-    if (receiver === "Non spécifié") {
-        if (sentence.includes("client") || sentence.includes("pharmacien")) {
-            receiver = "Pharmacien";
-        } else if (sentence.includes("livraison")) {
-            receiver = "Service livraison";
+        if (sentenceLower.includes("pharmacien") && sentenceLower.includes("représentant")) {
+            if (sentenceLower.indexOf("pharmacien") < sentenceLower.indexOf("représentant")) {
+                return { sender: "Pharmacien", receiver: "Représentant" };
+            } else {
+                return { sender: "Représentant", receiver: "Pharmacien" };
+            }
+        } else if (sentenceLower.includes("préposé") && sentenceLower.includes("service de livraison")) {
+            return { sender: "Préposé à la livraison", receiver: "Service livraison" };
         }
     }
     
     return { sender, receiver };
 }
 
-function determineMessageContent(sentence, verb, verbIndex) {
-    // Trouver l'objet du message
-    let objectIndex = sentence.indexOf(" ", verbIndex + verb.length);
-    if (objectIndex === -1) objectIndex = verbIndex + verb.length;
+function determineMessageContent(sentence) {
+    // Déterminer le contenu d'un message
+    const sentenceLower = sentence.toLowerCase();
     
-    let endIndex = sentence.indexOf(".", objectIndex);
-    if (endIndex === -1) endIndex = sentence.indexOf(",", objectIndex);
-    if (endIndex === -1) endIndex = sentence.length;
-    
-    const messageObject = sentence.substring(objectIndex, endIndex).trim();
-    
-    // Identifier les types de message courants
-    if (messageObject.includes("commande") || messageObject.includes("bon de commande")) {
+    if (sentenceLower.includes("commande") || sentenceLower.includes("bon de commande")) {
         return "Bon de commande";
-    } else if (messageObject.includes("formulaire de livraison") || messageObject.includes("bon de livraison")) {
+    } else if (sentenceLower.includes("livraison") || sentenceLower.includes("formulaire de livraison")) {
         return "Formulaire de livraison";
-    } else if (messageObject.includes("copie")) {
+    } else if (sentenceLower.includes("télépho")) {
+        return "Commande téléphonique";
+    } else if (sentenceLower.includes("copie")) {
         return "Copie";
-    } else if (messageObject.includes("produit")) {
+    } else if (sentenceLower.includes("produit")) {
         return "Produits";
+    } else {
+        return "Message";
     }
-    
-    return messageObject || "Message";
 }
 
-function findTimers(sentence, processData) {
-    const timerKeywords = [
-        "le matin", "chaque matin", "tous les matins", 
-        "le lendemain", "dans la journée", "le jour suivant",
-        "hebdomadaire", "mensuel", "quotidien", "périodique",
-        "délai", "attente", "pause", "temps d'attente"
+function identifyTimeEvents(sentences, processData) {
+    // Identifier les événements temporels
+    const timeKeywords = [
+        { pattern: /le matin/i, description: "Le matin" },
+        { pattern: /chaque matin/i, description: "Chaque matin" },
+        { pattern: /tous les matins/i, description: "Tous les matins" },
+        { pattern: /le lendemain/i, description: "Le lendemain" },
+        { pattern: /le jour suivant/i, description: "Le jour suivant" }
     ];
     
-    const lowerSentence = sentence.toLowerCase();
+    sentences.forEach((sentence, index) => {
+        // Vérifier si la phrase contient un événement temporel
+        for (const timeKeyword of timeKeywords) {
+            if (timeKeyword.pattern.test(sentence)) {
+                // Trouver l'activité liée
+                const relatedActivity = findRelatedActivity(index, processData.activities);
+                
+                // Ajouter l'événement temporel
+                processData.timers.push({
+                    description: timeKeyword.description,
+                    sentenceIndex: index,
+                    relatedActivity: relatedActivity
+                });
+                
+                break;
+            }
+        }
+    });
     
-    // Vérifier si la phrase contient une référence à un minuteur
-    for (const keyword of timerKeywords) {
-        if (lowerSentence.includes(keyword)) {
-            // Ajouter le minuteur à la liste
+    // Cas particulier pour Club Optique
+    if (processData.organizations.includes("Club Optique") && 
+        !processData.timers.some(timer => 
+            timer.description.includes("matin") || 
+            timer.description.includes("lendemain"))) {
+        
+        // Vérifier s'il y a une mention implicite d'un délai
+        const morningActivity = processData.activities.find(a => 
+            a.description.toLowerCase().includes("identifie") || 
+            a.description.toLowerCase().includes("commandes à livrer"));
+        
+        if (morningActivity) {
             processData.timers.push({
-                description: keyword,
-                fullSentence: sentence
+                description: "Le matin",
+                sentenceIndex: morningActivity.sentenceIndex,
+                relatedActivity: morningActivity.id
             });
-            break;
         }
     }
 }
 
-function generateModelingSteps(processData) {
+function identifyStartAndEndEvents(sentences, processData) {
+    // Identifier les événements de début et de fin
+    
+    // Événement de début (généralement associé à la première activité)
+    if (processData.activities.length > 0) {
+        const firstActivity = processData.activities[0];
+        
+        let startEventType = "générique";
+        if (firstActivity.description.toLowerCase().includes("reçoit") || 
+            firstActivity.description.toLowerCase().includes("réceptionne")) {
+            startEventType = "message";
+        } else if (processData.timers.some(timer => 
+            timer.sentenceIndex === firstActivity.sentenceIndex || 
+            timer.relatedActivity === firstActivity.id)) {
+            startEventType = "minuterie";
+        }
+        
+        processData.eventStarts.push({
+            type: startEventType,
+            role: firstActivity.role,
+            relatedActivity: firstActivity.id
+        });
+    }
+    
+    // Événements de fin (généralement associés aux dernières activités ou aux fins explicites)
+    const endSentences = sentences.filter(s => 
+        s.toLowerCase().includes("fin") || 
+        s.toLowerCase().includes("termine") || 
+        s.toLowerCase().includes("complété"));
+    
+    if (endSentences.length > 0) {
+        endSentences.forEach(sentence => {
+            const sentenceIndex = sentences.indexOf(sentence);
+            const relatedActivity = findRelatedActivity(sentenceIndex, processData.activities);
+            
+            let endEventType = "générique";
+            if (sentence.toLowerCase().includes("envoie") || 
+                sentence.toLowerCase().includes("notifie")) {
+                endEventType = "message";
+            }
+            
+            const relatedActivityObj = processData.activities.find(a => a.id === relatedActivity);
+            
+            processData.eventEnds.push({
+                type: endEventType,
+                role: relatedActivityObj ? relatedActivityObj.role : "Non spécifié",
+                relatedActivity: relatedActivity,
+                description: "Fin du processus"
+            });
+        });
+    } else if (processData.activities.length > 0) {
+        // Par défaut, associer un événement de fin à la dernière activité
+        const lastActivity = processData.activities[processData.activities.length - 1];
+        
+        let endEventType = "générique";
+        if (lastActivity.description.toLowerCase().includes("envoie") || 
+            lastActivity.description.toLowerCase().includes("notifie") || 
+            lastActivity.description.toLowerCase().includes("livre")) {
+            endEventType = "message";
+        }
+        
+        processData.eventEnds.push({
+            type: endEventType,
+            role: lastActivity.role,
+            relatedActivity: lastActivity.id,
+            description: "Commande complétée"
+        });
+    }
+    
+    // Ajouter des événements de fin pour chaque chemin alternatif des décisions
+    processData.decisions.forEach(decision => {
+        const negativeOutcomeActivity = findActivityAfterNegativeOutcome(decision, processData);
+        
+        if (negativeOutcomeActivity && 
+            !processData.eventEnds.some(end => end.relatedActivity === negativeOutcomeActivity.id)) {
+            
+            processData.eventEnds.push({
+                type: "générique",
+                role: negativeOutcomeActivity.role,
+                relatedActivity: negativeOutcomeActivity.id,
+                description: `${decision.outcomes.negative}`
+            });
+        }
+    });
+}
+
+function findActivityAfterNegativeOutcome(decision, processData) {
+    // Trouver l'activité après un résultat négatif d'une décision
+    const decisionIndex = decision.sentenceIndex;
+    
+    // Chercher une activité qui suit immédiatement la décision négative
+    const potentialActivities = processData.activities.filter(a => 
+        a.sentenceIndex > decisionIndex && 
+        a.sentenceIndex <= decisionIndex + 3);
+    
+    if (potentialActivities.length > 0) {
+        return potentialActivities[0];
+    }
+    
+    return null;
+}
+
+function applyContextualCorrections(processData) {
+    // Appliquer des corrections contextuelles spécifiques aux cas courants
+    
+    // Correction pour Club Optique
+    if (processData.organizations.includes("Club Optique")) {
+        // S'assurer que les bons rôles sont présents
+        const expectedRoles = ["Pharmacien", "Représentant", "Préposé à la livraison", "Service livraison"];
+        
+        expectedRoles.forEach(role => {
+            if (!processData.roles.some(r => r.name === role)) {
+                let organization = "Club Optique";
+                if (role === "Pharmacien") organization = "Pharmacie";
+                
+                processData.roles.push({
+                    name: role,
+                    organization: organization
+                });
+            }
+        });
+        
+        // S'assurer que les organisations clés sont présentes
+        if (!processData.organizations.includes("Pharmacie")) {
+            processData.organizations.push("Pharmacie");
+        }
+        
+        // Corriger le service livraison
+        const serviceLivraisonRole = processData.roles.find(r => r.name === "Service livraison");
+        if (serviceLivraisonRole) {
+            serviceLivraisonRole.organization = "Club Optique";
+        }
+    }
+    
+    // Corriger les rôles pour les activités
+    processData.activities.forEach(activity => {
+        // Corriger les rôles pour les activités spécifiques
+        if (activity.description.toLowerCase().includes("préposé") || 
+            activity.description.toLowerCase().includes("livraison")) {
+            activity.role = "Préposé à la livraison";
+        } else if (activity.description.toLowerCase().includes("représentant")) {
+            activity.role = "Représentant";
+        } else if (activity.description.toLowerCase().includes("pharmacien")) {
+            activity.role = "Pharmacien";
+        }
+    });
+    
+    // Corriger et optimiser les objets de données
+    if (processData.dataObjects.some(obj => obj.name === "Commande") && 
+        !processData.dataObjects.some(obj => obj.name === "Bon de commande")) {
+        
+        const commandeObj = processData.dataObjects.find(obj => obj.name === "Commande");
+        
+        processData.dataObjects.push({
+            name: "Bon de commande",
+            interaction: "création",
+            sentenceIndex: commandeObj.sentenceIndex,
+            relatedActivity: commandeObj.relatedActivity
+        });
+    }
+    
+    // Corriger les flux de message pour Club Optique
+    if (processData.organizations.includes("Club Optique") && processData.organizations.includes("Pharmacie")) {
+        const hasCommandeFlow = processData.messages.some(msg => 
+            msg.sender === "Pharmacien" && 
+            msg.receiver === "Représentant" && 
+            msg.content === "Commande");
+        
+        if (!hasCommandeFlow) {
+            // Trouver une activité pertinente pour le flux de commande
+            const commandeActivity = processData.activities.find(a => 
+                a.description.toLowerCase().includes("commande") && 
+                a.role === "Représentant");
+            
+            if (commandeActivity) {
+                processData.messages.push({
+                    sender: "Pharmacien",
+                    receiver: "Représentant",
+                    content: "Commande",
+                    sentenceIndex: commandeActivity.sentenceIndex,
+                    relatedActivity: commandeActivity.id
+                });
+            }
+        }
+        
+        const hasLivraisonFlow = processData.messages.some(msg => 
+            msg.sender === "Préposé à la livraison" && 
+            msg.receiver === "Service livraison");
+        
+        if (!hasLivraisonFlow) {
+            // Trouver une activité pertinente pour le flux de livraison
+            const livraisonActivity = processData.activities.find(a => 
+                a.description.toLowerCase().includes("envoie") && 
+                a.description.toLowerCase().includes("copie") && 
+                a.role === "Préposé à la livraison");
+            
+            if (livraisonActivity) {
+                processData.messages.push({
+                    sender: "Préposé à la livraison",
+                    receiver: "Service livraison",
+                    content: "Formulaire de livraison",
+                    sentenceIndex: livraisonActivity.sentenceIndex,
+                    relatedActivity: livraisonActivity.id
+                });
+            }
+        }
+    }
+}
+
+function generatePreciseModelingSteps(processData) {
     let instructions = [];
     
     // En-tête
@@ -613,212 +885,219 @@ function generateModelingSteps(processData) {
     // Étape 1: Définir les piscines et couloirs
     instructions.push("## 1. Définir les piscines et couloirs\n");
     
-    // Déterminer le nombre de piscines
-    const externalOrgs = processData.organizations.filter(org => 
-        org.includes("Pharmacie") || 
-        org.includes("Fournisseur") || 
-        org.includes("Client"));
+    // Organiser les organisations et rôles
+    const clubOptique = processData.organizations.includes("Club Optique");
+    const hasExternalOrg = processData.organizations.some(org => 
+        org !== "Club Optique" && 
+        org !== "Organisation" && 
+        org !== "Organisation principale");
     
-    const internalOrgs = processData.organizations.filter(org => 
-        !externalOrgs.includes(org));
+    instructions.push("### Piscines (organisations)");
     
-    if (processData.organizations.length > 0 || processData.roles.length > 0) {
-        if (externalOrgs.length > 0) {
-            instructions.push("### Piscines (organisations)");
-            externalOrgs.forEach(org => {
-                instructions.push(`- Créez une piscine horizontale pour "${org}"`);
-            });
-            
-            if (internalOrgs.length > 0) {
-                instructions.push(`- Créez une piscine principale pour "${internalOrgs[0]}" qui contiendra les couloirs internes`);
-            } else {
-                instructions.push("- Créez une piscine principale pour l'organisation interne qui contiendra les couloirs");
-            }
-        } else if (internalOrgs.length > 0) {
-            instructions.push("### Piscines (organisations)");
-            instructions.push(`- Créez une piscine principale pour "${internalOrgs[0]}" qui contiendra tous les couloirs`);
-        } else {
-            instructions.push("### Piscines (organisations)");
-            instructions.push("- Créez une piscine principale pour votre organisation qui contiendra tous les couloirs");
+    if (clubOptique) {
+        // Cas Club Optique
+        if (processData.organizations.includes("Pharmacie")) {
+            instructions.push(`- Créez une piscine horizontale pour "Pharmacie"`);
         }
+        instructions.push(`- Créez une piscine principale pour "Club Optique" qui contiendra les couloirs internes`);
+    } else if (hasExternalOrg) {
+        // Cas avec organisations externes
+        const externalOrgs = processData.organizations.filter(org => 
+            org !== "Organisation" && 
+            org !== "Organisation principale");
         
-        if (processData.roles.length > 0) {
-            instructions.push("\n### Couloirs (rôles/fonctions)");
-            processData.roles.forEach(role => {
-                // Pour les rôles pharmacien ou client, indiquez qu'ils vont dans la piscine externe
-                if (role.includes("Pharmacien") || role.includes("Client")) {
-                    if (externalOrgs.some(org => org.includes("Pharmacie") || org.includes("Client"))) {
-                        instructions.push(`- Dans la piscine "${externalOrgs.find(org => org.includes("Pharmacie") || org.includes("Client"))}", créez un couloir pour "${role}"`);
-                    } else {
-                        instructions.push(`- Créez un couloir pour "${role}" dans la piscine principale`);
-                    }
-                } else {
-                    instructions.push(`- Dans la piscine principale, créez un couloir pour "${role}"`);
-                }
-            });
-        } else {
-            // Déduire les rôles en fonction des activités
-            const inferredRoles = inferRolesFromActivities(processData.activities);
-            if (inferredRoles.length > 0) {
-                instructions.push("\n### Couloirs (rôles/fonctions)");
-                inferredRoles.forEach(role => {
-                    instructions.push(`- Dans la piscine principale, créez un couloir pour "${role}"`);
-                });
-            }
-        }
-    } else {
-        instructions.push("- Créez une piscine principale pour votre organisation");
-        instructions.push("- Dans la piscine, créez des couloirs pour chaque rôle ou fonction impliquée");
-    }
-    
-    // Étape 2: Événements de début
-    instructions.push("\n## 2. Placer les événements de début");
-    
-    // Déterminer si le processus commence par un message
-    const startsWithMessage = processData.sentences.length > 0 && 
-        (processData.sentences[0].toLowerCase().includes("reçoit") || 
-         processData.sentences[0].toLowerCase().includes("appel") ||
-         processData.sentences[0].toLowerCase().includes("demande"));
-    
-    // Déterminer si le processus commence par un timer
-    const startsWithTimer = processData.timers.some(timer => 
-        processData.sentences[0].toLowerCase().includes(timer.description));
-    
-    if (startsWithMessage) {
-        const initiator = determineInitiator(processData.sentences[0], processData.roles);
-        instructions.push(`- Placez un événement de début de type message (⭕ avec une enveloppe à l'intérieur) dans le couloir "${initiator}"`);
-    } else if (startsWithTimer) {
-        const timerDescription = processData.timers.find(timer => 
-            processData.sentences[0].toLowerCase().includes(timer.description)).description;
-        const initiator = determineInitiator(processData.sentences[0], processData.roles);
-        instructions.push(`- Placez un événement de début de type minuterie (⭕ avec une horloge à l'intérieur) dans le couloir "${initiator}"`);
-        instructions.push(`  - Étiquetez-le avec "${timerDescription}"`);
-    } else {
-        const initiator = determineInitiator(processData.sentences[0], processData.roles);
-        instructions.push(`- Placez un événement de début générique (⭕) dans le couloir "${initiator}"`);
-    }
-    
-    // Étape 3: Activités et flux de séquence
-    instructions.push("\n## 3. Modéliser les activités et les flux de séquence");
-    
-    if (processData.activities.length > 0) {
-        processData.activities.forEach((activity, index) => {
-            const activitySymbol = getActivitySymbol(activity.type);
-            instructions.push(`- Ajoutez une activité "${activity.description}" (${activitySymbol}) dans le couloir "${activity.actor}"`);
-            
-            if (index === 0) {
-                instructions.push(`  - Reliez-la à l'événement de début par un flux de séquence (⏩)`);
-            } else {
-                instructions.push(`  - Reliez-la à l'élément précédent par un flux de séquence (⏩)`);
+        const mainOrg = processData.organizations.find(org => 
+            org !== "Pharmacie" && 
+            org !== "Client" && 
+            org !== "Fournisseur");
+        
+        externalOrgs.forEach(org => {
+            if (org === "Pharmacie" || org === "Client" || org === "Fournisseur") {
+                instructions.push(`- Créez une piscine horizontale pour "${org}"`);
             }
         });
+        
+        if (mainOrg) {
+            instructions.push(`- Créez une piscine principale pour "${mainOrg}" qui contiendra les couloirs internes`);
+        } else {
+            instructions.push(`- Créez une piscine principale pour l'organisation interne qui contiendra les couloirs`);
+        }
     } else {
-        instructions.push("- Identifiez les principales activités du processus et ajoutez-les sous forme de tâches");
-        instructions.push("- Reliez-les avec des flux de séquence pour montrer leur ordre d'exécution");
+        // Cas par défaut
+        instructions.push(`- Créez une piscine principale pour l'organisation qui contiendra tous les couloirs`);
     }
     
-    // Étape 4: Passerelles de décision
+    // Couloirs
+    if (processData.roles.length > 0) {
+        instructions.push("\n### Couloirs (rôles/fonctions)");
+        
+        // Trier les rôles par organisation
+        const internalRoles = processData.roles.filter(role => 
+            role.organization === "Club Optique" || 
+            role.organization === "Organisation" || 
+            role.organization === undefined);
+        
+        const externalRoles = processData.roles.filter(role => 
+            role.organization === "Pharmacie" || 
+            role.organization === "Client" || 
+            role.organization === "Fournisseur");
+        
+        // Ajouter les couloirs externes
+        externalRoles.forEach(role => {
+            instructions.push(`- Dans la piscine "${role.organization}", créez un couloir pour "${role.name}"`);
+        });
+        
+        // Ajouter les couloirs internes
+        internalRoles.forEach(role => {
+            instructions.push(`- Dans la piscine principale, créez un couloir pour "${role.name}"`);
+        });
+    } else {
+        instructions.push("\n- Créez les couloirs nécessaires dans la piscine principale pour chaque rôle identifié");
+    }
+    
+    // Étape 2: Placer les événements de début
+    instructions.push("\n## 2. Placer les événements de début");
+    
+    if (processData.eventStarts.length > 0) {
+        processData.eventStarts.forEach(eventStart => {
+            if (eventStart.type === "message") {
+                instructions.push(`- Placez un événement de début de type message (⭕ avec une enveloppe à l'intérieur) dans le couloir "${eventStart.role}"`);
+            } else if (eventStart.type === "minuterie") {
+                const timer = processData.timers.find(t => t.relatedActivity === eventStart.relatedActivity);
+                const timerDesc = timer ? timer.description : "Timer";
+                instructions.push(`- Placez un événement de début de type minuterie (⭕ avec une horloge à l'intérieur) dans le couloir "${eventStart.role}"`);
+                instructions.push(`  - Étiquetez-le avec "${timerDesc}"`);
+            } else {
+                instructions.push(`- Placez un événement de début générique (⭕) dans le couloir "${eventStart.role}"`);
+            }
+        });
+    } else if (processData.activities.length > 0) {
+        const firstActivity = processData.activities[0];
+        instructions.push(`- Placez un événement de début générique (⭕) dans le couloir "${firstActivity.role}"`);
+    } else {
+        instructions.push(`- Placez un événement de début générique (⭕) dans le couloir principal`);
+    }
+    
+    // Étape 3: Modéliser les activités et les flux de séquence
+    instructions.push("\n## 3. Modéliser les activités et les flux de séquence");
+    
+    processData.activities.forEach((activity, index) => {
+        const activitySymbol = getActivitySymbol(activity.type);
+        instructions.push(`- Ajoutez une activité "${activity.description}" (${activitySymbol}) dans le couloir "${activity.role}"`);
+        
+        if (index === 0) {
+            instructions.push(`  - Reliez-la à l'événement de début par un flux de séquence (⏩)`);
+        } else {
+            instructions.push(`  - Reliez-la à l'élément précédent par un flux de séquence (⏩)`);
+        }
+    });
+    
+    // Étape 4: Ajouter les passerelles de décision
     if (processData.decisions.length > 0) {
         instructions.push("\n## 4. Ajouter les passerelles de décision");
-        processData.decisions.forEach((decision, index) => {
-            instructions.push(`- Ajoutez une passerelle exclusive (◇) dans le couloir "${decision.actor}" pour évaluer la condition "${decision.condition}"`);
+        
+        processData.decisions.forEach(decision => {
+            const activityId = decision.relatedActivities.length > 0 ? decision.relatedActivities[0] : null;
+            const activity = activityId ? processData.activities.find(a => a.id === activityId) : null;
+            const role = activity ? activity.role : "Non spécifié";
+            
+            instructions.push(`- Ajoutez une passerelle exclusive (◇) dans le couloir "${role}" pour évaluer la condition "${decision.condition}"`);
             instructions.push(`  - Créez un flux de séquence sortant étiqueté "${decision.outcomes.positive}" pour le cas où la condition est vraie`);
             instructions.push(`  - Créez un flux de séquence sortant étiqueté "${decision.outcomes.negative}" pour le cas où la condition est fausse`);
         });
     }
     
-    // Étape 5: Objets et magasins de données
-    const hasDataObjects = processData.dataObjects.length > 0;
-    const hasDataSources = processData.dataSources.length > 0;
-    
-    if (hasDataObjects || hasDataSources) {
+    // Étape 5: Intégrer les objets et magasins de données
+    if (processData.dataObjects.length > 0 || processData.dataStores.length > 0) {
         instructions.push("\n## 5. Intégrer les objets et magasins de données");
         
-        if (hasDataObjects) {
+        if (processData.dataObjects.length > 0) {
             instructions.push("\n### Objets de données");
+            
             processData.dataObjects.forEach(dataObject => {
                 instructions.push(`- Ajoutez un objet de données (📄) nommé "${dataObject.name}"`);
                 
                 if (dataObject.relatedActivity) {
-                    if (dataObject.interaction === "lecture") {
-                        instructions.push(`  - Reliez-le à l'activité "${dataObject.relatedActivity}" avec une association indiquant une lecture (flèche vers l'activité)`);
-                    } else if (dataObject.interaction === "création") {
-                        instructions.push(`  - Reliez-le à l'activité "${dataObject.relatedActivity}" avec une association indiquant une création (flèche vers l'objet)`);
-                    } else if (dataObject.interaction === "mise à jour") {
-                        instructions.push(`  - Reliez-le à l'activité "${dataObject.relatedActivity}" avec une association indiquant une mise à jour (flèche bidirectionnelle)`);
+                    const activity = processData.activities.find(a => a.id === dataObject.relatedActivity);
+                    
+                    if (activity) {
+                        const interactionDirection = getInteractionDirection(dataObject.interaction);
+                        instructions.push(`  - Reliez-le à l'activité "${activity.description}" avec une association ${interactionDirection}`);
                     }
                 }
             });
         }
         
-        if (hasDataSources) {
+        if (processData.dataStores.length > 0) {
             instructions.push("\n### Magasins de données");
-            processData.dataSources.forEach(dataSource => {
-                instructions.push(`- Ajoutez un magasin de données (🗄️) nommé "${dataSource.name}"`);
+            
+            processData.dataStores.forEach(dataStore => {
+                instructions.push(`- Ajoutez un magasin de données (🗄️) nommé "${dataStore.name}"`);
                 
-                if (dataSource.relatedActivity) {
-                    if (dataSource.interaction === "lecture") {
-                        instructions.push(`  - Reliez-le à l'activité "${dataSource.relatedActivity}" avec une association indiquant une lecture (flèche vers l'activité)`);
-                    } else if (dataSource.interaction === "création") {
-                        instructions.push(`  - Reliez-le à l'activité "${dataSource.relatedActivity}" avec une association indiquant une création (flèche vers le magasin)`);
-                    } else if (dataSource.interaction === "mise à jour") {
-                        instructions.push(`  - Reliez-le à l'activité "${dataSource.relatedActivity}" avec une association indiquant une mise à jour (flèche bidirectionnelle)`);
+                if (dataStore.relatedActivity) {
+                    const activity = processData.activities.find(a => a.id === dataStore.relatedActivity);
+                    
+                    if (activity) {
+                        const interactionDirection = getInteractionDirection(dataStore.interaction);
+                        instructions.push(`  - Reliez-le à l'activité "${activity.description}" avec une association ${interactionDirection}`);
                     }
                 }
             });
         }
     }
     
-    // Étape 6: Flux de message
+    // Étape 6: Intégrer les flux de message
     if (processData.messages.length > 0) {
         instructions.push("\n## 6. Intégrer les flux de message");
+        
         processData.messages.forEach(message => {
             instructions.push(`- Tracez un flux de message (〰️) pour "${message.content}" du couloir "${message.sender}" vers "${message.receiver}"`);
         });
     }
     
-    // Étape 7: Événements temporels
-    const intermediateTimers = processData.timers.filter(timer => 
-        !processData.sentences[0].toLowerCase().includes(timer.description));
-    
-    if (intermediateTimers.length > 0) {
+    // Étape 7: Ajouter les événements temporels
+    if (processData.timers.length > 0) {
         instructions.push("\n## 7. Ajouter les événements temporels");
-        intermediateTimers.forEach(timer => {
-            const relatedActivity = processData.activities.find(activity => 
-                activity.fullSentence.toLowerCase().includes(timer.description));
-            
-            const actorRole = relatedActivity ? relatedActivity.actor : processData.roles[0];
-            
-            instructions.push(`- Ajoutez un événement intermédiaire de type minuterie (⌛) dans le couloir "${actorRole}"`);
-            instructions.push(`  - Étiquetez-le avec "${timer.description}"`);
-            instructions.push(`  - Placez-le entre les activités appropriées et reliez-le avec des flux de séquence`);
+        
+        processData.timers.forEach(timer => {
+            if (timer.relatedActivity) {
+                const activity = processData.activities.find(a => a.id === timer.relatedActivity);
+                
+                if (activity) {
+                    instructions.push(`- Ajoutez un événement intermédiaire de type minuterie (⌛) dans le couloir "${activity.role}"`);
+                    instructions.push(`  - Étiquetez-le avec "${timer.description}"`);
+                    instructions.push(`  - Placez-le entre les activités appropriées et reliez-le avec des flux de séquence`);
+                }
+            }
         });
     }
     
-    // Étape 8: Événements de fin
+    // Étape 8: Finaliser avec les événements de fin
     instructions.push("\n## 8. Finaliser avec les événements de fin");
     
-    // Déterminer si le processus se termine par un message
-    const endsWithMessage = processData.sentences.length > 0 && 
-        processData.sentences[processData.sentences.length - 1].toLowerCase().includes("envoie") ||
-        processData.sentences[processData.sentences.length - 1].toLowerCase().includes("notifie") ||
-        processData.sentences[processData.sentences.length - 1].toLowerCase().includes("informe");
+    if (processData.eventEnds.length > 0) {
+        processData.eventEnds.forEach(eventEnd => {
+            if (eventEnd.type === "message") {
+                instructions.push(`- Placez un événement de fin de type message (⚫ avec une enveloppe à l'intérieur) dans le couloir "${eventEnd.role}"`);
+                instructions.push(`  - Reliez-le à la dernière activité par un flux de séquence (⏩)`);
+                instructions.push(`  - Étiquetez-le avec "${eventEnd.description}"`);
+            } else {
+                instructions.push(`- Placez un événement de fin générique (⚫) dans le couloir "${eventEnd.role}"`);
+                instructions.push(`  - Reliez-le à la dernière activité par un flux de séquence (⏩)`);
+                
+                if (eventEnd.description) {
+                    instructions.push(`  - Étiquetez-le avec "${eventEnd.description}"`);
+                }
+            }
+        });
+    } else if (processData.activities.length > 0) {
+        const lastActivity = processData.activities[processData.activities.length - 1];
+        instructions.push(`- Placez un événement de fin générique (⚫) dans le couloir "${lastActivity.role}"`);
+        instructions.push(`  - Reliez-le à la dernière activité par un flux de séquence (⏩)`);
+    }
     
-    if (endsWithMessage) {
-        const finalActor = determineFinisher(processData.sentences[processData.sentences.length - 1], processData.roles);
-        instructions.push(`- Placez un événement de fin de type message (⚫ avec une enveloppe à l'intérieur) dans le couloir "${finalActor}"`);
-        instructions.push(`  - Reliez-le à la dernière activité par un flux de séquence (⏩)`);
-        instructions.push("  - Étiquetez-le avec un nom descriptif comme \"Commande complétée\"");
-    } else {
-        // Identifier les chemins terminaux
-        const finalActor = determineFinisher(processData.sentences[processData.sentences.length - 1], processData.roles);
-        instructions.push(`- Placez un événement de fin générique (⚫) dans le couloir "${finalActor}"`);
-        instructions.push(`  - Reliez-le à la dernière activité par un flux de séquence (⏩)`);
-        
-        // Si des passerelles de décision ont été identifiées, suggérer d'ajouter des événements de fin pour chaque chemin
-        if (processData.decisions.length > 0) {
-            instructions.push("- Ajoutez des événements de fin supplémentaires pour chaque chemin alternatif issu des passerelles");
-        }
+    if (processData.decisions.length > 0) {
+        instructions.push("- Ajoutez des événements de fin supplémentaires pour chaque chemin alternatif issu des passerelles");
     }
     
     // Étape 9: Vérifications finales
@@ -831,164 +1110,115 @@ function generateModelingSteps(processData) {
     return instructions.join('\n');
 }
 
-function inferRolesFromActivities(activities) {
-    const roles = new Set();
-    
-    activities.forEach(activity => {
-        if (activity.actor && activity.actor !== "Non spécifié") {
-            roles.add(activity.actor);
-        }
-    });
-    
-    return Array.from(roles);
-}
-
-function determineInitiator(firstSentence, roles) {
-    // Déterminer qui initie le processus
-    const lowerSentence = firstSentence.toLowerCase();
-    
-    for (const role of roles) {
-        if (lowerSentence.includes(role.toLowerCase())) {
-            return role;
-        }
-    }
-    
-    // Inférer en fonction du contenu
-    if (lowerSentence.includes("pharmacien") || lowerSentence.includes("client")) {
-        return "Pharmacien";
-    } else if (lowerSentence.includes("représentant") || lowerSentence.includes("service client")) {
-        return "Représentant";
-    } else if (lowerSentence.includes("préposé") || lowerSentence.includes("livraison")) {
-        return "Préposé à la livraison";
-    }
-    
-    // Par défaut, retourner le premier rôle ou un rôle générique
-    return roles.length > 0 ? roles[0] : "Rôle principal";
-}
-
-function determineFinisher(lastSentence, roles) {
-    // Déterminer qui termine le processus
-    const lowerSentence = lastSentence.toLowerCase();
-    
-    for (const role of roles) {
-        if (lowerSentence.includes(role.toLowerCase())) {
-            return role;
-        }
-    }
-    
-    // Inférer en fonction du contenu
-    if (lowerSentence.includes("livraison") || lowerSentence.includes("livrer")) {
-        return "Service livraison";
-    } else if (lowerSentence.includes("préposé")) {
-        return "Préposé à la livraison";
-    } else if (lowerSentence.includes("pharmacien") || lowerSentence.includes("client")) {
-        return "Pharmacien";
-    }
-    
-    // Par défaut, retourner le dernier rôle ou un rôle générique
-    return roles.length > 0 ? roles[roles.length - 1] : "Rôle principal";
-}
-
 function getActivitySymbol(activityType) {
+    // Retourner le symbole approprié pour le type d'activité
     switch (activityType) {
-        case 'manuelle':
-            return '👋 (tâche manuelle)';
-        case 'utilisateur':
-            return '👤 (tâche utilisateur)';
-        case 'service':
-            return '⚙️ (tâche service)';
+        case "manuelle":
+            return "👋 (tâche manuelle)";
+        case "utilisateur":
+            return "👤 (tâche utilisateur)";
+        case "service":
+            return "⚙️ (tâche service)";
         default:
-            return '⬜ (tâche générique)';
+            return "⬜ (tâche générique)";
     }
 }
 
-function generateBPMNConcepts(processData) {
+function getInteractionDirection(interaction) {
+    // Déterminer la direction de l'association en fonction du type d'interaction
+    switch (interaction) {
+        case "lecture":
+            return "indiquant une lecture (flèche vers l'activité)";
+        case "création":
+            return "indiquant une création (flèche vers l'objet)";
+        case "mise à jour":
+            return "indiquant une mise à jour (flèche bidirectionnelle)";
+        default:
+            return "indiquant une lecture (flèche vers l'activité)";
+    }
+}
+
+function generateRelevantBPMNConcepts(processData) {
     let concepts = [];
     
     // En-tête
     concepts.push("# Concepts BPMN importants pour votre modèle\n");
     
-    // Concept 1: Piscines et couloirs
-    concepts.push("## Structure du modèle");
+    // Concept 1: Structure du modèle
+    concepts.push("## Structure organisationnelle");
+    concepts.push("- Les **piscines** représentent des organisations ou entités distinctes participant au processus");
+    concepts.push("- Les **couloirs** représentent des rôles ou fonctions au sein d'une même organisation");
+    concepts.push("- Les flux de séquence ne peuvent pas traverser les frontières d'une piscine");
+    concepts.push("- Pour communiquer entre différentes piscines, utilisez des flux de message");
     
-    if (processData.organizations.length > 1 || processData.roles.length > 1) {
-        concepts.push("- Les **piscines** représentent des organisations ou des entités participantes distinctes");
-        concepts.push("- Les **couloirs** représentent des rôles ou des fonctions au sein d'une organisation");
-        concepts.push("- Les flux de séquence ne peuvent pas traverser les frontières d'une piscine");
-        concepts.push("- Utilisez des flux de message pour communiquer entre différentes piscines");
-    }
-    
-    // Concept 2: Types d'activités
-    concepts.push("\n## Types d'activités");
-    
-    if (processData.activities.some(a => a.type === 'manuelle')) {
-        concepts.push("- **Tâche manuelle** (👋) : Réalisée par une personne sans l'aide d'un système d'information");
-    }
-    
-    if (processData.activities.some(a => a.type === 'utilisateur')) {
-        concepts.push("- **Tâche utilisateur** (👤) : Réalisée par une personne à l'aide d'un système d'information");
-    }
-    
-    if (processData.activities.some(a => a.type === 'service')) {
-        concepts.push("- **Tâche service** (⚙️) : Exécutée automatiquement par un système sans intervention humaine");
-    }
-    
-    // Concept 3: Passerelles et décisions
-    if (processData.decisions.length > 0) {
-        concepts.push("\n## Passerelles de décision");
-        concepts.push("- La **passerelle exclusive** (◇) représente un point de décision où une seule condition sera vraie");
-        concepts.push("- Chaque flux sortant doit être étiqueté avec sa condition (Oui/Non ou autre)");
-        concepts.push("- Une passerelle peut également être utilisée pour fusionner des flux alternatifs");
-    }
-    
-    // Concept 4: Événements
-    concepts.push("\n## Types d'événements");
-    concepts.push("- **Événement de début** (⭕) : Déclenche le processus");
-    concepts.push("- **Événement de fin** (⚫) : Termine un chemin du processus");
+    // Concept 2: Événements et flux
+    concepts.push("\n## Événements et flux");
+    concepts.push("- Les **événements de début** (⭕) marquent le déclenchement du processus");
+    concepts.push("- Les **événements de fin** (⚫) marquent la fin d'un chemin du processus");
     
     if (processData.messages.length > 0) {
-        concepts.push("- **Événement de message** (✉️) : Représente la réception ou l'envoi d'un message");
+        concepts.push("- Les **flux de message** (〰️) représentent les échanges d'information entre différents participants");
     }
     
     if (processData.timers.length > 0) {
-        concepts.push("- **Événement de minuterie** (⌛) : Représente un délai ou un moment précis");
+        concepts.push("- Les **événements minuterie** (⌛) représentent des délais ou des moments précis");
+    }
+    
+    // Concept 3: Types d'activités
+    concepts.push("\n## Types d'activités");
+    
+    const hasManualActivities = processData.activities.some(a => a.type === "manuelle");
+    const hasUserActivities = processData.activities.some(a => a.type === "utilisateur");
+    const hasServiceActivities = processData.activities.some(a => a.type === "service");
+    
+    if (hasManualActivities) {
+        concepts.push("- Les **tâches manuelles** (👋) sont exécutées par une personne sans l'aide d'un système d'information");
+    }
+    
+    if (hasUserActivities) {
+        concepts.push("- Les **tâches utilisateur** (👤) sont exécutées par une personne à l'aide d'un système d'information");
+    }
+    
+    if (hasServiceActivities) {
+        concepts.push("- Les **tâches service** (⚙️) sont exécutées automatiquement par un système sans intervention humaine");
+    }
+    
+    // Concept 4: Passerelles et décisions
+    if (processData.decisions.length > 0) {
+        concepts.push("\n## Passerelles et décisions");
+        concepts.push("- Les **passerelles exclusives** (◇) représentent des points de décision où une seule condition peut être vraie");
+        concepts.push("- Chaque flux sortant doit être étiqueté avec sa condition (Oui/Non ou autre)");
+        concepts.push("- Une passerelle peut servir à diviser le flux (prise de décision) ou à le fusionner (jonction de chemins alternatifs)");
     }
     
     // Concept 5: Données
-    if (processData.dataObjects.length > 0 || processData.dataSources.length > 0) {
+    if (processData.dataObjects.length > 0 || processData.dataStores.length > 0) {
         concepts.push("\n## Gestion des données");
         
         if (processData.dataObjects.length > 0) {
-            concepts.push("- **Objet de données** (📄) : Information temporaire utilisée pendant l'exécution du processus");
+            concepts.push("- Les **objets de données** (📄) représentent les informations utilisées pendant l'exécution du processus");
+            concepts.push("  - Ils ont un cycle de vie limité à l'instance du processus");
         }
         
-        if (processData.dataSources.length > 0) {
-            concepts.push("- **Magasin de données** (🗄️) : Stockage persistant qui survit à l'exécution du processus");
+        if (processData.dataStores.length > 0) {
+            concepts.push("- Les **magasins de données** (🗄️) représentent des emplacements où les données sont stockées de façon persistante");
+            concepts.push("  - Ils survivent à l'exécution d'une instance du processus");
         }
         
-        concepts.push("- Les associations indiquent comment les activités interagissent avec les données :");
-        concepts.push("  - **Lecture** : L'activité consulte les données (flèche vers l'activité)");
-        concepts.push("  - **Création** : L'activité génère de nouvelles données (flèche vers l'objet de données)");
-        concepts.push("  - **Mise à jour** : L'activité modifie des données existantes (flèche bidirectionnelle)");
+        concepts.push("- Les **associations** montrent comment les activités interagissent avec les données :");
+        concepts.push("  - **Lecture** : Flèche pointant vers l'activité");
+        concepts.push("  - **Création** : Flèche pointant vers l'objet ou le magasin");
+        concepts.push("  - **Mise à jour** : Flèche bidirectionnelle");
     }
     
-    // Ajouter des conseils spécifiques au contexte
-    const hasRetailContext = processData.sentences.some(s => 
-        s.toLowerCase().includes("commande") || 
-        s.toLowerCase().includes("produit") || 
-        s.toLowerCase().includes("client") ||
-        s.toLowerCase().includes("livraison"));
-    
-    if (hasRetailContext) {
-        concepts.push("\n## Conseils spécifiques pour ce contexte");
-        concepts.push("- Assurez-vous que les flux de la commande du client jusqu'à la livraison sont clairement modélisés");
-        concepts.push("- Identifiez clairement les points de décision qui peuvent affecter le traitement de la commande");
-        concepts.push("- Représentez correctement les échanges de documents et d'informations entre les parties prenantes");
+    // Ajout de conseils spécifiques au contexte
+    if (processData.organizations.includes("Club Optique")) {
+        concepts.push("\n## Conseils pour ce processus de commande et livraison");
+        concepts.push("- Assurez-vous que le flux de commande entre le pharmacien et le représentant est clairement modélisé");
+        concepts.push("- Représentez correctement la validation du pharmacien avec une passerelle exclusive");
+        concepts.push("- Modélisez le délai entre la prise de commande et le traitement par le préposé à la livraison");
+        concepts.push("- Assurez-vous que le flux du formulaire de livraison vers le service de livraison est bien représenté");
     }
     
     return concepts.join('\n');
-}
-
-function capitalizeFirstLetter(string) {
-    return string.charAt(0).toUpperCase() + string.slice(1);
 }
