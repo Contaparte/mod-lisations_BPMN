@@ -1889,6 +1889,282 @@ function extractMessageEventName(sentence) {
 }
 
 /**
+ * Analyse les relations entre les composants du processus
+ * @param {Object} components - Composants extraits du processus
+ * @param {string} processedText - Texte prétraité du scénario
+ * @return {Object} - Structure analysée du processus
+ */
+function analyzeProcessStructure(components, processedText) {
+    const { actors, activities, decisions, dataObjects, events } = components;
+    
+    // Déterminer les relations entre activités (flux de séquence)
+    const activitySequences = determineActivitySequences(activities, processedText);
+    
+    // Associer les décisions aux activités appropriées
+    const decisionRelations = associateDecisionsWithActivities(decisions, activities, processedText);
+    
+    // Associer les données aux activités appropriées
+    const dataRelations = associateDataWithActivities(dataObjects, activities, processedText);
+    
+    // Créer une structure intégrée du processus
+    return {
+        actors,
+        activities,
+        decisions,
+        dataObjects,
+        events,
+        activitySequences,
+        decisionRelations,
+        dataRelations
+    };
+}
+
+/**
+ * Détermine les séquences entre activités
+ * @param {Object[]} activities - Activités du processus
+ * @param {string} processedText - Texte prétraité du scénario
+ * @return {Object[]} - Séquences d'activités identifiées
+ */
+function determineActivitySequences(activities, processedText) {
+    const sequences = [];
+    
+    // Ordonner les activités par position dans le texte
+    const orderedActivities = [...activities].sort((a, b) => a.position - b.position);
+    
+    // Créer des séquences basées sur l'ordre des activités
+    for (let i = 0; i < orderedActivities.length - 1; i++) {
+        sequences.push({
+            from: orderedActivities[i].id,
+            to: orderedActivities[i + 1].id,
+            condition: null
+        });
+    }
+    
+    return sequences;
+}
+
+/**
+ * Associe les décisions aux activités appropriées
+ * @param {Object[]} decisions - Décisions du processus
+ * @param {Object[]} activities - Activités du processus
+ * @param {string} processedText - Texte prétraité du scénario
+ * @return {Object[]} - Relations décision-activité
+ */
+function associateDecisionsWithActivities(decisions, activities, processedText) {
+    const relations = [];
+    
+    decisions.forEach(decision => {
+        const nearestPriorActivity = findNearestActivityBeforePosition(activities, decision.position);
+        const positiveOutcomeActivity = findActivityByDescription(activities, decision.positiveOutcome);
+        const negativeOutcomeActivity = findActivityByDescription(activities, decision.negativeOutcome);
+        
+        if (nearestPriorActivity) {
+            relations.push({
+                decisionId: decision.id,
+                priorActivityId: nearestPriorActivity.id
+            });
+        }
+        
+        if (positiveOutcomeActivity) {
+            relations.push({
+                decisionId: decision.id,
+                outcomeActivityId: positiveOutcomeActivity.id,
+                isPositive: true
+            });
+        }
+        
+        if (negativeOutcomeActivity) {
+            relations.push({
+                decisionId: decision.id,
+                outcomeActivityId: negativeOutcomeActivity.id,
+                isPositive: false
+            });
+        }
+    });
+    
+    return relations;
+}
+
+/**
+ * Trouve l'activité la plus proche avant une position donnée
+ * @param {Object[]} activities - Activités du processus
+ * @param {number} position - Position de référence
+ * @return {Object} - Activité trouvée ou null
+ */
+function findNearestActivityBeforePosition(activities, position) {
+    let nearestActivity = null;
+    let smallestDistance = Number.MAX_SAFE_INTEGER;
+    
+    activities.forEach(activity => {
+        if (activity.position < position) {
+            const distance = position - activity.position;
+            if (distance < smallestDistance) {
+                smallestDistance = distance;
+                nearestActivity = activity;
+            }
+        }
+    });
+    
+    return nearestActivity;
+}
+
+/**
+ * Trouve une activité par sa description
+ * @param {Object[]} activities - Activités du processus
+ * @param {string} description - Description à rechercher
+ * @return {Object} - Activité trouvée ou null
+ */
+function findActivityByDescription(activities, description) {
+    if (!description) return null;
+    
+    return activities.find(activity => 
+        areStringSimilar(activity.description, description) || 
+        areStringSimilar(activity.name, description)
+    );
+}
+
+/**
+ * Associe les données aux activités appropriées
+ * @param {Object[]} dataObjects - Objets de données du processus
+ * @param {Object[]} activities - Activités du processus
+ * @param {string} processedText - Texte prétraité du scénario
+ * @return {Object[]} - Relations donnée-activité
+ */
+function associateDataWithActivities(dataObjects, activities, processedText) {
+    const relations = [];
+    
+    dataObjects.forEach(dataObject => {
+        activities.forEach(activity => {
+            const lowerActivityDesc = activity.description.toLowerCase();
+            const dataNameLower = dataObject.name.toLowerCase();
+            
+            if (lowerActivityDesc.includes(dataNameLower)) {
+                const accessMode = determineDataAccessMode(activity.description, dataObject.name);
+                
+                if (accessMode !== 'indéterminé') {
+                    relations.push({
+                        dataId: dataObject.id,
+                        activityId: activity.id,
+                        accessMode: accessMode
+                    });
+                }
+            }
+        });
+    });
+    
+    return relations;
+}
+
+/**
+ * Remplit la liste des éléments pour la révision
+ * @param {Object} structure - Structure du processus
+ */
+function populateElementList(structure) {
+    const elementList = document.getElementById('element-list');
+    elementList.innerHTML = '';
+    
+    // Ajouter les activités à la liste
+    structure.activities.forEach(activity => {
+        const elementItem = document.createElement('div');
+        elementItem.classList.add('element-item');
+        elementItem.innerHTML = `
+            <strong>${activity.name}</strong> (${activity.type})
+            <div class="position-selector">
+                <label>Position: 
+                    <select id="position-${activity.id}">
+                        <option value="top">En haut</option>
+                        <option value="right" selected>À droite</option>
+                        <option value="bottom">En bas</option>
+                        <option value="left">À gauche</option>
+                    </select>
+                </label>
+            </div>
+        `;
+        elementList.appendChild(elementItem);
+    });
+    
+    // Ajouter les passerelles à la liste
+    structure.decisions.forEach(decision => {
+        const elementItem = document.createElement('div');
+        elementItem.classList.add('element-item');
+        elementItem.innerHTML = `
+            <strong>Passerelle: ${decision.question}</strong>
+            <div class="position-selector">
+                <label>Position: 
+                    <select id="position-${decision.id}">
+                        <option value="top">En haut</option>
+                        <option value="right" selected>À droite</option>
+                        <option value="bottom">En bas</option>
+                        <option value="left">À gauche</option>
+                    </select>
+                </label>
+            </div>
+        `;
+        elementList.appendChild(elementItem);
+    });
+    
+    // Ajouter les objets de données à la liste
+    structure.dataObjects.forEach(dataObject => {
+        const elementItem = document.createElement('div');
+        elementItem.classList.add('element-item');
+        elementItem.innerHTML = `
+            <strong>${dataObject.type === 'magasin' ? 'Magasin de données' : 'Objet de données'}: ${dataObject.name}</strong>
+            <div class="position-selector">
+                <label>Position: 
+                    <select id="position-${dataObject.id}">
+                        <option value="top">En haut</option>
+                        <option value="right">À droite</option>
+                        <option value="bottom" selected>En bas</option>
+                        <option value="left">À gauche</option>
+                    </select>
+                </label>
+            </div>
+        `;
+        elementList.appendChild(elementItem);
+    });
+}
+
+/**
+ * Met à jour les positions des éléments
+ * @param {Object} structure - Structure du processus
+ */
+function updateElementPositions(structure) {
+    // Mettre à jour les positions des activités
+    structure.activities.forEach(activity => {
+        const positionSelect = document.getElementById(`position-${activity.id}`);
+        if (positionSelect) {
+            activity.position = positionSelect.value;
+        }
+    });
+    
+    // Mettre à jour les positions des passerelles
+    structure.decisions.forEach(decision => {
+        const positionSelect = document.getElementById(`position-${decision.id}`);
+        if (positionSelect) {
+            decision.position = positionSelect.value;
+        }
+    });
+    
+    // Mettre à jour les positions des objets de données
+    structure.dataObjects.forEach(dataObject => {
+        const positionSelect = document.getElementById(`position-${dataObject.id}`);
+        if (positionSelect) {
+            dataObject.position = positionSelect.value;
+        }
+    });
+}
+
+/**
+ * Met la première lettre d'une chaîne en majuscule
+ * @param {string} string - Chaîne à capitaliser
+ * @return {string} - Chaîne avec première lettre en majuscule
+ */
+function capitalizeFirstLetter(string) {
+    if (!string) return '';
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+/**
  * Formate la description BPMN à partir de la structure du processus
  * @param {Object} processStructure - Structure analysée du processus
  * @return {string} - Description BPMN formatée
