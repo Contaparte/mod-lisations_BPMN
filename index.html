@@ -3,304 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Assistant de Modélisation de Processus d'Affaires (BPMN)</title>
+    <title>Générateur de Description BPMN</title>
     <style>
         body {
             font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
             padding: 20px;
             max-width: 1200px;
             margin: 0 auto;
-            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
         }
         .container {
             display: flex;
-            flex-direction: column;
+            flex-wrap: wrap;
             gap: 20px;
         }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        .symbols-section {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .symbols-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 10px;
-        }
-        .symbol-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 5px;
-        }
-        .symbol-icon {
-            font-size: 1.5em;
-            width: 30px;
-            text-align: center;
+        .col {
+            flex: 1;
+            min-width: 300px;
         }
         textarea {
             width: 100%;
-            height: 200px;
+            min-height: 300px;
             padding: 10px;
-            margin-top: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            resize: vertical;
             font-family: inherit;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .output {
+            border: 1px solid #ccc;
+            padding: 15px;
+            min-height: 300px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            overflow-y: auto;
         }
         button {
-            background-color: #3498db;
+            background-color: #4CAF50;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
             cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.3s;
+            border-radius: 4px;
         }
         button:hover {
-            background-color: #2980b9;
+            background-color: #45a049;
         }
-        pre {
-            background: #f4f4f4;
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            white-space: pre-wrap;
-            overflow-x: auto;
-        }
-        .collapsible {
-            background-color: #f1f1f1;
-            color: #333;
-            cursor: pointer;
+        .element-list {
+            margin-top: 20px;
+            border: 1px solid #ddd;
             padding: 10px;
-            width: 100%;
-            border: none;
-            text-align: left;
-            outline: none;
+            border-radius: 4px;
+            background-color: #f5f5f5;
+        }
+        .element-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #fff;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .position-selector {
+            margin-top: 5px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
             font-weight: bold;
-            margin-bottom: 0;
         }
-        .collapsible:after {
-            content: '\002B';
-            color: #777;
-            font-weight: bold;
-            float: right;
-            margin-left: 5px;
-        }
-        .active:after {
-            content: "\2212";
-        }
-        .content {
-            padding: 0 18px;
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.2s ease-out;
-            background-color: white;
-            border: 1px solid #f1f1f1;
-            border-top: none;
-        }
-        .example-button {
-            background-color: #e7e7e7;
-            color: #333;
-            margin-right: 10px;
-            font-weight: normal;
-        }
-        .tabs {
-            overflow: hidden;
-            border: 1px solid #ccc;
-            background-color: #f1f1f1;
-            border-radius: 5px 5px 0 0;
-        }
-        .tabs button {
-            background-color: inherit;
-            float: left;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            padding: 10px 16px;
-            transition: 0.3s;
-            color: #333;
-            font-weight: normal;
-        }
-        .tabs button:hover {
-            background-color: #ddd;
-        }
-        .tabs button.active {
-            background-color: #3498db;
+        .alert {
+            padding: 10px;
+            background-color: #f44336;
             color: white;
-        }
-        .tabcontent {
-            display: none;
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
+            margin-bottom: 15px;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
+    <h1>Générateur de Description BPMN</h1>
+    
     <div class="container">
-        <div class="header">
-            <h1>Assistant de Modélisation de Processus d'Affaires (BPMN)</h1>
-            <p>Cet outil vous aide à créer un diagramme BPMN à partir d'une description textuelle de processus d'affaires</p>
-        </div>
-
-        <button class="collapsible">Guide des symboles BPMN</button>
-        <div class="content">
-            <div class="symbols-section">
-                <div class="symbols-grid">
-                    <div class="symbol-item">
-                        <span class="symbol-icon">🏊</span>
-                        <span>Piscine (organisation)</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">🏊‍♂️</span>
-                        <span>Couloir (rôle/fonction)</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">⭕</span>
-                        <span>Événement de début</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">⚫</span>
-                        <span>Événement de fin</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">◎</span>
-                        <span>Événement intermédiaire</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">⌛</span>
-                        <span>Événement minuterie</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">✉️</span>
-                        <span>Événement message</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">⬜</span>
-                        <span>Activité/Tâche générique</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">👤</span>
-                        <span>Tâche utilisateur (avec SI)</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">👋</span>
-                        <span>Tâche manuelle (sans SI)</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">⚙️</span>
-                        <span>Tâche service (automatique)</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">◇</span>
-                        <span>Passerelle exclusive (décision)</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">⏩</span>
-                        <span>Flux de séquence</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">〰️</span>
-                        <span>Flux de message</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">📄</span>
-                        <span>Objet de données</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">🗄️</span>
-                        <span>Magasin de données</span>
-                    </div>
-                    <div class="symbol-item">
-                        <span class="symbol-icon">➖</span>
-                        <span>Association</span>
-                    </div>
-                </div>
+        <div class="col">
+            <div class="input-group">
+                <label for="scenario">Description du processus d'affaires :</label>
+                <textarea id="scenario" placeholder="Décrivez le processus d'affaires en détail. Mentionnez les acteurs, les activités, les flux, les données, etc."></textarea>
             </div>
+            <button id="generate-btn">Générer la description BPMN</button>
+            <button id="refine-btn" disabled>Affiner la description</button>
         </div>
-
-        <button class="collapsible">Exemples de descriptions de processus</button>
-        <div class="content">
-            <p>Sélectionnez un exemple pour le charger dans la zone de texte :</p>
-            <div>
-                <button class="example-button" onclick="loadExample(1)">Processus de commande</button>
-                <button class="example-button" onclick="loadExample(2)">Demande de congé</button>
-                <button class="example-button" onclick="loadExample(3)">Validation de document</button>
-            </div>
-        </div>
-
-        <div class="input-section">
-            <label for="inputScenario">Décrivez le processus d'affaires (acteurs, activités, décisions, échanges) :</label>
-            <textarea id="inputScenario" placeholder="Exemple : Le client appelle le service client pour passer une commande. Le représentant vérifie si le client existe dans le système. Si le client n'existe pas, le représentant crée un nouveau compte dans le système. Le représentant saisit ensuite la commande du client..."></textarea>
-            <button onclick="generateInstructions()">Générer les instructions de modélisation</button>
-        </div>
-
-        <div class="tabs">
-            <button class="tablinks active" onclick="openTab(event, 'instructions')">Instructions de modélisation</button>
-            <button class="tablinks" onclick="openTab(event, 'concepts')">Concepts BPMN</button>
-        </div>
-
-        <div id="instructions" class="tabcontent" style="display: block;">
-            <h2>Instructions pour modéliser votre processus :</h2>
-            <pre id="outputInstructions">Les instructions apparaîtront ici après avoir généré le modèle.</pre>
-        </div>
-
-        <div id="concepts" class="tabcontent">
-            <h2>Concepts BPMN importantes pour votre modèle :</h2>
-            <pre id="outputConcepts">Les concepts liés à votre processus apparaîtront ici.</pre>
+        
+        <div class="col">
+            <h2>Description BPMN générée :</h2>
+            <div id="output" class="output"></div>
         </div>
     </div>
+    
+    <div id="element-section" style="display: none;">
+        <h2>Révision des positions relatives :</h2>
+        <p>Ajustez les positions des éléments pour une description plus précise.</p>
+        <div id="element-list" class="element-list"></div>
+        <button id="update-description-btn">Mettre à jour la description</button>
+    </div>
 
-    <script>
-        // Gestion des sections rétractables
-        var coll = document.getElementsByClassName("collapsible");
-        for (var i = 0; i < coll.length; i++) {
-            coll[i].addEventListener("click", function() {
-                this.classList.toggle("active");
-                var content = this.nextElementSibling;
-                if (content.style.maxHeight) {
-                    content.style.maxHeight = null;
-                } else {
-                    content.style.maxHeight = content.scrollHeight + "px";
-                }
-            });
-        }
-
-        // Gestion des onglets
-        function openTab(evt, tabName) {
-            var i, tabcontent, tablinks;
-            tabcontent = document.getElementsByClassName("tabcontent");
-            for (i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none";
-            }
-            tablinks = document.getElementsByClassName("tablinks");
-            for (i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" active", "");
-            }
-            document.getElementById(tabName).style.display = "block";
-            evt.currentTarget.className += " active";
-        }
-
-        // Exemples de descriptions de processus
-        function loadExample(exampleNum) {
-            const examples = {
-                1: "Un client appelle le service client pour passer une commande. Le représentant du service client vérifie si le client existe déjà dans la base de données clients. Si le client n'existe pas, le représentant crée un nouveau compte client en saisissant ses informations. Le représentant saisit ensuite la commande du client dans le système. Si le montant de la commande dépasse 500€, le responsable des ventes doit approuver la commande. Une fois la commande approuvée ou si le montant est inférieur à 500€, le système envoie automatiquement un email de confirmation au client. Le service d'expédition prépare ensuite la commande, imprime l'étiquette d'expédition et emballe les produits. Enfin, le service de livraison récupère le colis et le livre au client.",
-                2: "Un employé soumet une demande de congé via le portail RH en remplissant un formulaire en ligne. Le système enregistre la demande et notifie automatiquement le responsable hiérarchique de l'employé. Le responsable examine la demande et vérifie la disponibilité de l'équipe pendant la période demandée en consultant le calendrier des congés. Si la période pose problème, le responsable refuse la demande et le système en informe l'employé. Si la période est acceptable, le responsable approuve la demande. Pour les congés de plus de 5 jours, le directeur du département doit également valider la demande. Une fois toutes les approbations obtenues, le système met à jour le calendrier des congés et envoie une confirmation à l'employé et au service RH.",
-                3: "Un auteur soumet un document pour validation en l'envoyant par email au service qualité. Le service qualité reçoit le document et l'enregistre dans le système de gestion documentaire. Le coordinateur qualité assigne le document à un validateur technique selon la nature du document. Le validateur technique examine le document et vérifie sa conformité aux normes techniques. S'il trouve des erreurs, il renvoie le document à l'auteur avec ses commentaires. L'auteur corrige le document et le soumet à nouveau. Si le document est techniquement correct, le validateur l'approuve et le transmet au responsable qualité. Le responsable qualité effectue une vérification finale et, si tout est conforme, il valide le document et le publie dans la base documentaire. Le système envoie alors une notification à toutes les parties prenantes concernées."
-            };
-            document.getElementById("inputScenario").value = examples[exampleNum];
-        }
-    </script>
     <script src="script.js"></script>
 </body>
 </html>
