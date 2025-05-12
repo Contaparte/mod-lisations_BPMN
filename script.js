@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function() {
             refineBtn.disabled = false;
         } catch (error) {
             console.error('Erreur lors de la génération:', error);
-            output.textContent = 'Une erreur est survenue lors de la génération. Veuillez réessayer.';
+            output.textContent = 'Une erreur est survenue lors de la génération: ' + error.message;
         }
     });
     
@@ -294,7 +294,7 @@ function extractActors(text, sentences) {
 /**
  * Extrait les activités du processus
  * @param {string[]} sentences - Phrases du scénario
- * @param {string} fullText - Texte complet du scénario
+ * @param {string} fullText - Texte complet pour le contexte
  * @return {Object[]} - Activités identifiées
  */
 function extractActivities(sentences, fullText) {
@@ -1822,13 +1822,10 @@ function extractEvents(sentences, fullText) {
             });
         }
     }
-    
-    if (lowerFullText.includes('rapport') && 
-        (lowerFullText.includes('refusé') || lowerFullText.includes('rejeté'))) {
+
+if (lowerFullText.includes('rapport') && lowerFullText.includes('refusé')) {
         // Ajouter un événement de fin pour le rapport refusé s'il n'existe pas déjà
-        if (!events.some(e => e.type === 'fin' && 
-                         (e.name.toLowerCase().includes('refusé') || 
-                          e.name.toLowerCase().includes('rejeté')))) {
+        if (!events.some(e => e.type === 'fin' && e.name.toLowerCase().includes('refusé'))) {
             events.push({
                 id: 'end' + (events.filter(e => e.type === 'fin').length + 1),
                 type: 'fin',
@@ -1838,290 +1835,1123 @@ function extractEvents(sentences, fullText) {
         }
     }
     
-    // Si aucun événement de fin n'a été identifié, en ajouter un par défaut
-    if (!events.some(e => e.type === 'fin')) {
-        events.push({
-            id: 'end1',
-            type: 'fin',
-            name: 'Fin du processus',
-            position: sentences.length - 1
-        });
+    if (lowerFullText.includes('command') && lowerFullText.includes('livr')) {
+        // Ajouter un événement de fin pour la commande livrée s'il n'existe pas déjà
+        if (!events.some(e => e.type === 'fin' && e.name.toLowerCase().includes('livré'))) {
+            events.push({
+                id: 'end' + (events.filter(e => e.type === 'fin').length + 1),
+                type: 'fin',
+                name: 'Commande livrée',
+                position: sentences.length
+            });
+        }
+    }
+    
+    if (lowerFullText.includes('command') && lowerFullText.includes('annul')) {
+        // Ajouter un événement de fin pour la commande annulée s'il n'existe pas déjà
+        if (!events.some(e => e.type === 'fin' && e.name.toLowerCase().includes('annulé'))) {
+            events.push({
+                id: 'end' + (events.filter(e => e.type === 'fin').length + 1),
+                type: 'fin',
+                name: 'Commande annulée',
+                position: sentences.length
+            });
+        }
     }
     
     return events;
 }
 
 /**
- * Infère le nom d’un événement de fin à partir du contexte
- * @param {string} sentence - Phrase qui indique la fin
- * @param {string} fullText - Texte complet du scénario
- * @return {string} - Nom de l’événement de fin
+ * Infère le nom d'un événement de début
+ * @param {string} firstSentence - Première phrase du scénario
+ * @param {string} fullText - Texte complet pour le contexte
+ * @return {string} - Nom de l'événement de début
+ */
+function inferStartEventName(firstSentence, fullText) {
+    const lowerFirstSentence = firstSentence.toLowerCase();
+    const lowerFullText = fullText.toLowerCase();
+    
+    // Détecter les mentions explicites du démarrage du processus
+    if (lowerFirstSentence.includes('commence') || 
+        lowerFirstSentence.includes('débute') || 
+        lowerFirstSentence.includes('initial')) {
+        
+        // Identifier ce qui déclenche le processus
+        const triggers = [
+            { keyword: 'réception d\'une', result: 'Réception commande' },
+            { keyword: 'réception d\'un', result: 'Réception demande' },
+            { keyword: 'récepti', result: 'Réception demande' },
+            { keyword: 'commande', result: 'Réception commande' },
+            { keyword: 'demande', result: 'Réception demande' },
+            { keyword: 'rapport', result: 'Réception rapport' },
+            { keyword: 'formulaire', result: 'Réception formulaire' },
+            { keyword: 'message', result: 'Réception message' },
+            { keyword: 'courriel', result: 'Réception courriel' },
+            { keyword: 'téléphone', result: 'Appel téléphonique' }
+        ];
+        
+        for (const trigger of triggers) {
+            if (lowerFirstSentence.includes(trigger.keyword)) {
+                return trigger.result;
+            }
+        }
+    }
+    
+    // Cas spécifiques basés sur le contexte global
+    if (lowerFullText.includes('remboursement') && lowerFullText.includes('dépense')) {
+        return 'Réception rapport de dépenses';
+    }
+    
+    if (lowerFullText.includes('commande') && lowerFullText.includes('client')) {
+        return 'Réception commande';
+    }
+    
+    if (lowerFullText.includes('facture') || lowerFullText.includes('paiement')) {
+        return 'Réception facture';
+    }
+    
+    if (lowerFullText.includes('validation') || lowerFullText.includes('approbation')) {
+        return 'Demande de validation';
+    }
+    
+    // Par défaut
+    return 'Début du processus';
+}
+
+/**
+ * Infère le nom d'un événement de fin
+ * @param {string} sentence - Phrase mentionnant la fin du processus
+ * @param {string} fullText - Texte complet pour le contexte
+ * @return {string} - Nom de l'événement de fin
  */
 function inferEndEventName(sentence, fullText) {
     const lowerSentence = sentence.toLowerCase();
-    if (lowerSentence.includes('livraison')) {
-        return 'Commande livrée';
+    const lowerFullText = fullText.toLowerCase();
+    
+    // Extraire le nom de la fin du processus à partir de mentions explicites
+    if (lowerSentence.includes('met fin au processus avec') || 
+        lowerSentence.includes('se termine avec') ||
+        lowerSentence.includes('ce qui met fin au processus avec')) {
+        
+        // Extraire la description après "avec"
+        const withIndex = Math.max(
+            lowerSentence.indexOf('avec'),
+            lowerSentence.indexOf('ce qui met fin au processus avec')
+        );
+        
+        if (withIndex !== -1) {
+            let endName = sentence.substring(withIndex + 5).trim();
+            endName = endName.replace(/\.$/, '').trim(); // Supprimer le point final
+            return capitalizeFirstLetter(endName);
+        }
     }
-    if (lowerSentence.includes('annulée') || lowerSentence.includes('refusée')) {
-        return 'Commande annulée';
+    
+    // Rechercher des motifs spécifiques de fin de processus
+    const endPatterns = [
+        { pattern: /command.*annul/i, name: 'Commande annulée' },
+        { pattern: /command.*livr/i, name: 'Commande livrée' },
+        { pattern: /command.*complét/i, name: 'Commande complétée' },
+        { pattern: /command.*termin/i, name: 'Commande terminée' },
+        { pattern: /rapport.*approuv/i, name: 'Rapport approuvé' },
+        { pattern: /rapport.*refus/i, name: 'Rapport refusé' },
+        { pattern: /paiement.*effectu/i, name: 'Paiement effectué' },
+        { pattern: /paiement.*complét/i, name: 'Paiement complété' },
+        { pattern: /demande.*approuv/i, name: 'Demande approuvée' },
+        { pattern: /demande.*refus/i, name: 'Demande refusée' }
+    ];
+    
+    for (const pattern of endPatterns) {
+        if (lowerSentence.match(pattern.pattern)) {
+            return pattern.name;
+        }
     }
+    
+    // Cas spécifiques basés sur le contexte global
+    if (lowerFullText.includes('remboursement') && lowerFullText.includes('dépense')) {
+        if (lowerSentence.includes('approuvé') || lowerSentence.includes('accepté')) {
+            return 'Dépenses remboursées';
+        } else if (lowerSentence.includes('refusé') || lowerSentence.includes('rejeté')) {
+            return 'Dépenses refusées';
+        }
+    }
+    
+    // Par défaut
     return 'Fin du processus';
 }
 
 /**
- * Extrait la description d’un événement temporel
- * @param {string} sentence - Phrase contenant une référence temporelle
- * @return {string} - Description de l’événement temporel
+ * Extrait un événement temporel à partir d'une phrase
+ * @param {string} sentence - Phrase décrivant l'événement temporel
+ * @return {string} - Description de l'événement temporel
  */
 function extractTemporalEvent(sentence) {
-    const match = sentence.match(/(tous? les? matins?|chaque? matin|le lendemain|vers \d+h|à \d+h)/i);
-    return match ? match[0] : 'Événement temporel';
-}
-
-/**
- * Extrait le nom d’un événement de message à partir d’une phrase
- * @param {string} sentence - Phrase décrivant l’envoi ou la réception d’un message
- * @return {string} - Nom du message extrait
- */
-function extractMessageEventName(sentence) {
-    const match = sentence.match(/(courriel|message|notification|réponse|avis)/i);
-    return match ? match[0] : 'Message';
-}
-
-/**
- * Analyse les relations entre les composants du processus
- * @param {Object} components - Composants extraits du processus
- * @param {string} processedText - Texte prétraité du scénario
- * @return {Object} - Structure analysée du processus
- */
-function analyzeProcessStructure(components, processedText) {
-    const { actors, activities, decisions, dataObjects, events } = components;
+    const lowerSentence = sentence.toLowerCase();
     
-    // Déterminer les relations entre activités (flux de séquence)
-    const activitySequences = determineActivitySequences(activities, processedText);
-    
-    // Associer les décisions aux activités appropriées
-    const decisionRelations = associateDecisionsWithActivities(decisions, activities, processedText);
-    
-    // Associer les données aux activités appropriées
-    const dataRelations = associateDataWithActivities(dataObjects, activities, processedText);
-    
-    // Créer une structure intégrée du processus
-    return {
-        actors,
-        activities,
-        decisions,
-        dataObjects,
-        events,
-        activitySequences,
-        decisionRelations,
-        dataRelations
-    };
-}
-
-/**
- * Détermine les séquences entre activités
- * @param {Object[]} activities - Activités du processus
- * @param {string} processedText - Texte prétraité du scénario
- * @return {Object[]} - Séquences d'activités identifiées
- */
-function determineActivitySequences(activities, processedText) {
-    const sequences = [];
-    
-    // Ordonner les activités par position dans le texte
-    const orderedActivities = [...activities].sort((a, b) => a.position - b.position);
-    
-    // Créer des séquences basées sur l'ordre des activités
-    for (let i = 0; i < orderedActivities.length - 1; i++) {
-        sequences.push({
-            from: orderedActivities[i].id,
-            to: orderedActivities[i + 1].id,
-            condition: null
-        });
+    // Extraire les mentions temporelles spécifiques
+    if (lowerSentence.match(/\ble\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+matin\b/i)) {
+        const match = lowerSentence.match(/\ble\s+(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+matin\b/i);
+        return capitalizeFirstLetter(match[0]);
     }
     
-    return sequences;
+    if (lowerSentence.includes('le lendemain matin')) {
+        return 'Le lendemain matin';
+    }
+    
+    if (lowerSentence.includes('chaque matin') || lowerSentence.includes('tous les matins')) {
+        return 'Chaque matin';
+    }
+    
+    if (lowerSentence.includes('le matin')) {
+        return 'Le matin';
+    }
+    
+    // Heures spécifiques
+    const timePattern = /\b(?:vers|à)\s+(\d+)h(?:(\d+))?\b/i;
+    const timeMatch = lowerSentence.match(timePattern);
+    if (timeMatch) {
+        const hour = timeMatch[1];
+        const minute = timeMatch[2] ? timeMatch[2] : '00';
+        return `À ${hour}h${minute}`;
+    }
+    
+    // Par défaut
+    return 'Délai';
 }
 
 /**
- * Associe les décisions aux activités appropriées
- * @param {Object[]} decisions - Décisions du processus
- * @param {Object[]} activities - Activités du processus
- * @param {string} processedText - Texte prétraité du scénario
- * @return {Object[]} - Relations décision-activité
+ * Extrait le nom d'un événement de message
+ * @param {string} sentence - Phrase décrivant l'événement de message
+ * @return {string} - Description de l'événement de message
  */
-function associateDecisionsWithActivities(decisions, activities, processedText) {
-    const relations = [];
+function extractMessageEventName(sentence) {
+    const lowerSentence = sentence.toLowerCase();
     
-    decisions.forEach(decision => {
-        const nearestPriorActivity = findNearestActivityBeforePosition(activities, decision.position);
-        const positiveOutcomeActivity = findActivityByDescription(activities, decision.positiveOutcome);
-        const negativeOutcomeActivity = findActivityByDescription(activities, decision.negativeOutcome);
-        
-        if (nearestPriorActivity) {
-            relations.push({
-                decisionId: decision.id,
-                priorActivityId: nearestPriorActivity.id
-            });
+    // Extraire le contenu du message
+    const messageTypes = [
+        { keyword: 'facture', name: 'facture' },
+        { keyword: 'paiement', name: 'paiement' },
+        { keyword: 'confirmation', name: 'confirmation' },
+        { keyword: 'commande', name: 'commande' },
+        { keyword: 'rapport', name: 'rapport' },
+        { keyword: 'autorisation', name: 'autorisation' },
+        { keyword: 'notification', name: 'notification' },
+        { keyword: 'avis', name: 'avis' },
+        { keyword: 'demande', name: 'demande' }
+    ];
+    
+    for (const type of messageTypes) {
+        if (lowerSentence.includes(type.keyword)) {
+            return type.name;
         }
-        
-        if (positiveOutcomeActivity) {
-            relations.push({
-                decisionId: decision.id,
-                outcomeActivityId: positiveOutcomeActivity.id,
-                isPositive: true
-            });
-        }
-        
-        if (negativeOutcomeActivity) {
-            relations.push({
-                decisionId: decision.id,
-                outcomeActivityId: negativeOutcomeActivity.id,
-                isPositive: false
-            });
-        }
+    }
+    
+    // Par défaut
+    return 'message';
+}
+
+/**
+ * Analyse la structure du processus pour déterminer les relations entre les composants
+ * @param {Object} components - Composants extraits du processus
+ * @param {string} processedText - Texte prétraité du scénario
+ * @return {Object} - Structure complète du processus
+ */
+function analyzeProcessStructure(components, processedText) {
+    // Structure pour stocker l'organisation du processus
+    const structure = {
+        actors: components.actors,
+        activities: components.activities,
+        decisions: components.decisions,
+        dataObjects: components.dataObjects,
+        events: components.events,
+        swimlanes: [],
+        sequenceFlows: [],
+        messageFlows: [],
+        associations: []
+    };
+    
+    // Identifier les couloirs de la piscine principale
+    const internalActors = components.actors.filter(actor => actor.isInternal && actor.requiresLane);
+    
+    // Affiner les rôles pour créer des couloirs pour la piscine principale
+    structure.swimlanes = internalActors.map(actor => ({
+        id: `l${structure.swimlanes.length + 1}`,
+        name: actor.name,
+        actor: actor.name,
+        activities: components.activities.filter(activity => activity.actor === actor.name),
+        decisions: components.decisions.filter(decision => decision.actor === actor.name)
+    }));
+    
+    // Ajouter les acteurs externes comme piscines séparées
+    const externalActors = components.actors.filter(actor => !actor.isInternal);
+    externalActors.forEach(actor => {
+        structure.swimlanes.push({
+            id: `p${structure.swimlanes.length + 1}`,
+            name: actor.name,
+            actor: actor.name,
+            isExternalPool: true,
+            activities: []
+        });
     });
     
-    return relations;
-}
-
-/**
- * Trouve l'activité la plus proche avant une position donnée
- * @param {Object[]} activities - Activités du processus
- * @param {number} position - Position de référence
- * @return {Object} - Activité trouvée ou null
- */
-function findNearestActivityBeforePosition(activities, position) {
-    let nearestActivity = null;
-    let smallestDistance = Number.MAX_SAFE_INTEGER;
-    
-    activities.forEach(activity => {
-        if (activity.position < position) {
-            const distance = position - activity.position;
-            if (distance < smallestDistance) {
-                smallestDistance = distance;
-                nearestActivity = activity;
+    // Déterminer les flux de séquence entre les activités et les décisions
+    components.activities.forEach(activity => {
+        if (activity.dependsOn) {
+            // Flux depuis une activité dépendante d'une condition
+            structure.sequenceFlows.push({
+                id: `sf${structure.sequenceFlows.length + 1}`,
+                source: activity.dependsOn,
+                target: activity.id,
+                condition: activity.isBranchActivity ? (activity.position % 2 === 0 ? 'Oui' : 'Non') : null
+            });
+        } else {
+            // Tenter de trouver l'activité ou la décision précédente selon la position
+            const previousElements = [...components.activities, ...components.decisions]
+                .filter(elem => elem.position < activity.position)
+                .sort((a, b) => b.position - a.position);
+            
+            if (previousElements.length > 0) {
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: previousElements[0].id,
+                    target: activity.id,
+                    condition: null
+                });
+            } else {
+                // Si aucune activité ou décision précédente n'est trouvée, relier à l'événement de début
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: 'start',
+                    target: activity.id,
+                    condition: null
+                });
             }
         }
     });
     
-    return nearestActivity;
-}
-
-/**
- * Trouve une activité par sa description
- * @param {Object[]} activities - Activités du processus
- * @param {string} description - Description à rechercher
- * @return {Object} - Activité trouvée ou null
- */
-function findActivityByDescription(activities, description) {
-    if (!description) return null;
-    
-    return activities.find(activity => 
-        areStringSimilar(activity.description, description) || 
-        areStringSimilar(activity.name, description)
-    );
-}
-
-/**
- * Associe les données aux activités appropriées
- * @param {Object[]} dataObjects - Objets de données du processus
- * @param {Object[]} activities - Activités du processus
- * @param {string} processedText - Texte prétraité du scénario
- * @return {Object[]} - Relations donnée-activité
- */
-function associateDataWithActivities(dataObjects, activities, processedText) {
-    const relations = [];
-    
-    dataObjects.forEach(dataObject => {
-        activities.forEach(activity => {
-            const lowerActivityDesc = activity.description.toLowerCase();
-            const dataNameLower = dataObject.name.toLowerCase();
+    // Déterminer les flux de séquence pour les décisions
+    components.decisions.forEach(decision => {
+        if (!decision.isConvergence) {
+            // Trouver les activités précédentes
+            const previousActivities = components.activities
+                .filter(activity => activity.position < decision.position)
+                .sort((a, b) => b.position - a.position);
             
-            if (lowerActivityDesc.includes(dataNameLower)) {
-                const accessMode = determineDataAccessMode(activity.description, dataObject.name);
+            if (previousActivities.length > 0) {
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: previousActivities[0].id,
+                    target: decision.id,
+                    condition: null
+                });
+            } else {
+                // Si aucune activité précédente n'est trouvée, relier à l'événement de début
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: 'start',
+                    target: decision.id,
+                    condition: null
+                });
+            }
+            
+            // Relier les branches "Oui" et "Non" de la décision
+            if (decision.positiveOutcome) {
+                // Trouver l'activité ou la décision qui correspond à la conséquence positive
+                const positiveTarget = findTargetForOutcome(decision.positiveOutcome, components);
                 
-                if (accessMode !== 'indéterminé') {
-                    relations.push({
-                        dataId: dataObject.id,
-                        activityId: activity.id,
-                        accessMode: accessMode
+                if (positiveTarget) {
+                    structure.sequenceFlows.push({
+                        id: `sf${structure.sequenceFlows.length + 1}`,
+                        source: decision.id,
+                        target: positiveTarget.id,
+                        condition: 'Oui'
                     });
+                }
+            }
+            
+            if (decision.negativeOutcome) {
+                // Trouver l'activité ou la décision qui correspond à la conséquence négative
+                const negativeTarget = findTargetForOutcome(decision.negativeOutcome, components);
+                
+                if (negativeTarget) {
+                    structure.sequenceFlows.push({
+                        id: `sf${structure.sequenceFlows.length + 1}`,
+                        source: decision.id,
+                        target: negativeTarget.id,
+                        condition: 'Non'
+                    });
+                }
+            }
+        } else {
+            // Passerelle de convergence
+            const recentActivities = components.activities
+                .filter(activity => activity.position < decision.position && decision.position - activity.position <= 3)
+                .sort((a, b) => b.position - a.position);
+            
+            // Relier les activités récentes à la passerelle de convergence
+            recentActivities.forEach(activity => {
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: activity.id,
+                    target: decision.id,
+                    condition: null
+                });
+            });
+            
+            // Relier la passerelle de convergence à l'activité suivante
+            const nextActivities = components.activities
+                .filter(activity => activity.position > decision.position)
+                .sort((a, b) => a.position - b.position);
+            
+            if (nextActivities.length > 0) {
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: decision.id,
+                    target: nextActivities[0].id,
+                    condition: null
+                });
+            }
+        }
+    });
+    
+    // Relier les activités aux événements de fin
+    components.activities.forEach(activity => {
+        if (activity.isEndActivity) {
+            // Trouver un événement de fin approprié
+            const endEvent = components.events.find(event => 
+                event.type === 'fin' && 
+                (event.position === activity.position || 
+                 Math.abs(event.position - activity.position) <= 2)
+            );
+            
+            if (endEvent) {
+                structure.sequenceFlows.push({
+                    id: `sf${structure.sequenceFlows.length + 1}`,
+                    source: activity.id,
+                    target: endEvent.id,
+                    condition: null
+                });
+            }
+        }
+    });
+    
+    // Identifier les flux de message entre les acteurs internes et externes
+    const interactionVerbs = ['envoie', 'transmet', 'communique', 'notifie', 'informe'];
+    
+    components.activities.forEach(activity => {
+        // Vérifier si l'activité implique une interaction avec un acteur externe
+        const lowerActivityDesc = activity.description.toLowerCase();
+        
+        if (interactionVerbs.some(verb => lowerActivityDesc.includes(verb))) {
+            // Identifier l'acteur externe concerné
+            externalActors.forEach(actor => {
+                if (lowerActivityDesc.includes(actor.name.toLowerCase())) {
+                    // Créer un flux de message de l'activité vers l'acteur externe
+                    structure.messageFlows.push({
+                        id: `mf${structure.messageFlows.length + 1}`,
+                        source: activity.id,
+                        target: structure.swimlanes.find(s => s.actor === actor.name).id,
+                        name: inferMessageName(activity.description, actor.name)
+                    });
+                }
+            });
+        }
+    });
+    
+    // Identifier les associations entre les activités et les objets de données
+    components.activities.forEach(activity => {
+        if (activity.hasDataInteraction) {
+            components.dataObjects.forEach(dataObject => {
+                // Vérifier si l'activité mentionne l'objet de données
+                const lowerActivityDesc = activity.description.toLowerCase();
+                const lowerDataName = dataObject.name.toLowerCase();
+                
+                if (lowerActivityDesc.includes(lowerDataName)) {
+                    // Déterminer le mode d'accès si indéterminé
+                    let accessMode = dataObject.accessMode;
+                    if (accessMode === 'indéterminé') {
+                        accessMode = determineDataAccessMode(activity.description, dataObject.name);
+                    }
+                    
+                    // Créer une association entre l'activité et l'objet de données
+                    structure.associations.push({
+                        id: `as${structure.associations.length + 1}`,
+                        source: activity.id,
+                        target: dataObject.id,
+                        direction: inferAssociationDirection(accessMode)
+                    });
+                }
+            });
+        }
+    });
+    
+    return structure;
+}
+
+/**
+ * Trouve l'élément cible correspondant à une conséquence
+ * @param {string} outcome - Description de la conséquence
+ * @param {Object} components - Composants du processus
+ * @return {Object} - Élément cible (activité ou décision)
+ */
+function findTargetForOutcome(outcome, components) {
+    const lowerOutcome = outcome.toLowerCase();
+    
+    // Rechercher une activité dont la description correspond à la conséquence
+    const matchingActivity = components.activities.find(activity => 
+        areStringSimilar(activity.description, outcome) ||
+        lowerOutcome.includes(activity.name.toLowerCase())
+    );
+    
+    if (matchingActivity) {
+        return matchingActivity;
+    }
+    
+    // Rechercher une décision dont la description correspond à la conséquence
+    const matchingDecision = components.decisions.find(decision => 
+        areStringSimilar(decision.condition, outcome) ||
+        lowerOutcome.includes(decision.question.toLowerCase())
+    );
+    
+    if (matchingDecision) {
+        return matchingDecision;
+    }
+    
+    return null;
+}
+
+/**
+ * Infère le nom d'un message à partir d'une description d'activité
+ * @param {string} activityDesc - Description de l'activité
+ * @param {string} targetActor - Nom de l'acteur cible
+ * @return {string} - Nom du message
+ */
+function inferMessageName(activityDesc, targetActor) {
+    const lowerDesc = activityDesc.toLowerCase();
+    
+    // Messages courants
+    const commonMessages = [
+        { keyword: 'facture', name: 'Facture' },
+        { keyword: 'paiement', name: 'Paiement' },
+        { keyword: 'confirmation', name: 'Confirmation' },
+        { keyword: 'commande', name: 'Commande' },
+        { keyword: 'rapport', name: 'Rapport' },
+        { keyword: 'avis', name: 'Avis' },
+        { keyword: 'notification', name: 'Notification' },
+        { keyword: 'demande', name: 'Demande' },
+        { keyword: 'information', name: 'Information' }
+    ];
+    
+    for (const message of commonMessages) {
+        if (lowerDesc.includes(message.keyword)) {
+            return message.name;
+        }
+    }
+    
+    // Si aucun message courant n'est identifié, inférer à partir du contexte
+    if (lowerDesc.includes('envoie')) {
+        const afterEnvoie = lowerDesc.substring(lowerDesc.indexOf('envoie') + 6);
+        const firstNoun = afterEnvoie.split(/[\s,;.]/)[0];
+        
+        if (firstNoun && firstNoun.length > 2) {
+            return capitalizeFirstLetter(firstNoun);
+        }
+    }
+    
+    // Par défaut
+    return 'Message';
+}
+
+/**
+ * Infère la direction d'une association
+ * @param {string} accessMode - Mode d'accès (lecture, création, mise à jour)
+ * @return {string} - Direction de l'association
+ */
+function inferAssociationDirection(accessMode) {
+    switch (accessMode) {
+        case 'lecture':
+            return 'to-source';
+        case 'création':
+            return 'to-target';
+        case 'mise à jour':
+            return 'both';
+        default:
+            return 'none';
+    }
+}
+
+/**
+ * Formate la description BPMN en texte
+ * @param {Object} structure - Structure du processus
+ * @return {string} - Description BPMN formatée
+ */
+function formatBPMNDescription(structure) {
+    let description = '';
+    
+    // Décrire les piscines et couloirs
+    description += "// Description des piscines et couloirs\n";
+    
+    // Compter le nombre de piscines externes
+    const externalPools = structure.swimlanes.filter(lane => lane.isExternalPool);
+    
+    // Décrire les piscines externes
+    externalPools.forEach(pool => {
+        description += `Tracer une piscine pour l'acteur externe « ${pool.name} ».\n\n`;
+    });
+    
+    // Décrire la piscine principale avec ses couloirs
+    const internalLanes = structure.swimlanes.filter(lane => !lane.isExternalPool);
+    if (internalLanes.length > 0) {
+        description += `Tracer une piscine « Processus de ${inferProcessName(structure)} » dans laquelle on retrouve `;
+        
+        if (internalLanes.length === 1) {
+            description += `un couloir pour l'acteur interne: « ${internalLanes[0].name} ».\n\n`;
+        } else {
+            description += `${internalLanes.length} couloirs pour les ${internalLanes.length} acteurs internes: `;
+            const laneNames = internalLanes.map(lane => `« ${lane.name} »`).join(', ');
+            description += `${laneNames}.\n\n`;
+        }
+    }
+    
+    // Décrire les événements de début
+    const startEvents = structure.events.filter(event => event.type === 'début');
+    if (startEvents.length > 0) {
+        description += "// Description des événements de début\n";
+        
+        startEvents.forEach(event => {
+            // Si c'est un événement de début message, le relier à l'acteur externe
+            if (event.name.toLowerCase().includes('réception')) {
+                // Identifier l'acteur externe probable
+                const externalActorName = inferExternalActorForEvent(event, structure);
+                
+                if (externalActorName) {
+                    // Tracer un événement de début dans la piscine externe
+                    description += `Tracer un événement début générique à la frontière de la piscine « ${externalActorName} ».\n\n`;
+                    
+                    // Tracer un événement de début message dans la piscine principale
+                    description += `Tracer un événement début message au début du couloir « ${internalLanes[0].name} » et relier l'événement de début générique à l'événement début message par le flux de message « ${event.name} ».\n\n`;
+                } else {
+                    // Si aucun acteur externe n'est identifié, simplement tracer un événement de début générique
+                    description += `Tracer un événement début générique au début du couloir « ${internalLanes[0].name} ».\n\n`;
+                }
+            } else {
+                // Événement de début générique
+                description += `Tracer un événement début générique au début du couloir « ${internalLanes[0].name} ».\n\n`;
+            }
+        });
+    }
+    
+    // Décrire les activités et leurs connexions
+    description += "// Description des activités et flux de séquence\n";
+    
+    // Trier les activités par position
+    const sortedActivities = [...structure.activities].sort((a, b) => a.position - b.position);
+    
+    sortedActivities.forEach(activity => {
+        // Décrire l'activité dans son couloir
+        const activityLane = internalLanes.find(lane => lane.actor === activity.actor);
+        if (activityLane) {
+            description += `Tracer l'activité ${activity.type} « ${activity.name} » dans le couloir « ${activityLane.name} ».\n\n`;
+            
+            // Décrire les connexions entrantes
+            const incomingFlows = structure.sequenceFlows.filter(flow => flow.target === activity.id);
+            incomingFlows.forEach(flow => {
+                const sourceElement = getElementById(flow.source, structure);
+                if (sourceElement) {
+                    const sourceType = getElementType(sourceElement);
+                    const sourceDescription = getElementDescription(sourceElement);
+                    
+                    description += `Relier ${sourceType} « ${sourceDescription} » à l'activité ${activity.type} « ${activity.name} » par un flux de séquence`;
+                    
+                    if (flow.condition) {
+                        description += ` avec la condition « ${flow.condition} »`;
+                    }
+                    
+                    description += `.\n\n`;
+                }
+            });
+        }
+    });
+    
+    // Décrire les passerelles
+    description += "// Description des passerelles et décisions\n";
+    
+    structure.decisions.forEach(decision => {
+        if (!decision.isConvergence) {
+            // Décrire la passerelle de décision
+            const decisionLane = internalLanes.find(lane => lane.actor === decision.actor);
+            if (decisionLane) {
+                description += `Tracer une passerelle « ${decision.question} » dans le couloir « ${decisionLane.name} ».\n\n`;
+                
+                // Décrire les connexions entrantes
+                const incomingFlows = structure.sequenceFlows.filter(flow => flow.target === decision.id);
+                incomingFlows.forEach(flow => {
+                    const sourceElement = getElementById(flow.source, structure);
+                    if (sourceElement) {
+                        const sourceType = getElementType(sourceElement);
+                        const sourceDescription = getElementDescription(sourceElement);
+                        
+                        description += `Relier ${sourceType} « ${sourceDescription} » à la passerelle « ${decision.question} » par un flux de séquence.\n\n`;
+                    }
+                });
+                
+                // Décrire les connexions sortantes
+                const outgoingFlows = structure.sequenceFlows.filter(flow => flow.source === decision.id);
+                outgoingFlows.forEach(flow => {
+                    const targetElement = getElementById(flow.target, structure);
+                    if (targetElement) {
+                        const targetType = getElementType(targetElement);
+                        const targetDescription = getElementDescription(targetElement);
+                        
+                        description += `Relier la passerelle « ${decision.question} » à ${targetType} « ${targetDescription} » par un flux de séquence`;
+                        
+                        if (flow.condition) {
+                            description += ` avec la condition « ${flow.condition} »`;
+                        }
+                        
+                        description += `.\n\n`;
+                    }
+                });
+            }
+        } else {
+            // Décrire la passerelle de convergence
+            const decisionLane = internalLanes.find(lane => lane.actor === decision.actor);
+            if (decisionLane) {
+                description += `Tracer une passerelle de convergence dans le couloir « ${decisionLane.name} ».\n\n`;
+                
+                // Décrire les connexions entrantes
+                const incomingFlows = structure.sequenceFlows.filter(flow => flow.target === decision.id);
+                incomingFlows.forEach(flow => {
+                    const sourceElement = getElementById(flow.source, structure);
+                    if (sourceElement) {
+                        const sourceType = getElementType(sourceElement);
+                        const sourceDescription = getElementDescription(sourceElement);
+                        
+                        description += `Relier ${sourceType} « ${sourceDescription} » à la passerelle de convergence par un flux de séquence.\n\n`;
+                    }
+                });
+                
+                // Décrire les connexions sortantes
+                const outgoingFlows = structure.sequenceFlows.filter(flow => flow.source === decision.id);
+                outgoingFlows.forEach(flow => {
+                    const targetElement = getElementById(flow.target, structure);
+                    if (targetElement) {
+                        const targetType = getElementType(targetElement);
+                        const targetDescription = getElementDescription(targetElement);
+                        
+                        description += `Relier la passerelle de convergence à ${targetType} « ${targetDescription} » par un flux de séquence.\n\n`;
+                    }
+                });
+            }
+        }
+    });
+    
+    // Décrire les événements de fin
+    description += "// Description des événements de fin\n";
+    
+    const endEvents = structure.events.filter(event => event.type === 'fin');
+    if (endEvents.length > 0) {
+        endEvents.forEach(event => {
+            // Trouver l'activité précédant l'événement de fin
+            const precedingActivity = sortedActivities.find(activity => 
+                activity.isEndActivity && 
+                (activity.position === event.position || 
+                 Math.abs(activity.position - event.position) <= 2)
+            );
+            
+            if (precedingActivity) {
+                // Trouver le couloir contenant l'activité
+                const activityLane = internalLanes.find(lane => lane.actor === precedingActivity.actor);
+                if (activityLane) {
+                    // Tracer l'événement de fin
+                    description += `Tracer un événement de fin « ${event.name} » dans le couloir « ${activityLane.name} ».\n\n`;
+                    
+                    // Relier l'activité à l'événement de fin
+                    description += `Relier l'activité ${precedingActivity.type} « ${precedingActivity.name} » à l'événement de fin « ${event.name} » par un flux de séquence.\n\n`;
+                    
+                    // S'il s'agit d'un événement de fin avec message, le relier à un acteur externe
+                    if (event.name.toLowerCase().includes('livr')) {
+                        // Probablement une livraison au client
+                        const clientPool = externalPools.find(pool => pool.name.toLowerCase().includes('client'));
+                        if (clientPool) {
+                            description += `Tracer le flux de message « Marchandise », de l'événement de fin « ${event.name} » jusqu'à à la frontière de la piscine « ${clientPool.name} ».\n\n`;
+                        }
+                    } else if (event.name.toLowerCase().includes('avis') || 
+                               event.name.toLowerCase().includes('annul')) {
+                        // Probablement un avis au client
+                        const clientPool = externalPools.find(pool => pool.name.toLowerCase().includes('client'));
+                        if (clientPool) {
+                            description += `Tracer le flux de message « Avis au client », de l'événement de fin « ${event.name} » jusqu'à à la frontière de la piscine « ${clientPool.name} ».\n\n`;
+                        }
+                    }
+                }
+            } else {
+                // Si aucune activité précédente n'est identifiée, tracer simplement l'événement de fin
+                if (internalLanes.length > 0) {
+                    description += `Tracer un événement de fin « ${event.name} » dans le couloir « ${internalLanes[0].name} ».\n\n`;
+                }
+            }
+        });
+    }
+    
+    // Décrire les objets de données et leurs associations
+    description += "// Description des objets et magasins de données\n";
+    
+    structure.dataObjects.forEach(dataObject => {
+        // Décrire l'objet ou le magasin de données
+        const objectType = dataObject.type === 'magasin' ? 'magasin de données' : 'objet de données';
+        
+        description += `Tracer un ${objectType} « ${dataObject.name} »`;
+        
+        // Trouver les activités associées à cet objet
+        const associatedActivities = [];
+        structure.associations.forEach(association => {
+            if (association.target === dataObject.id) {
+                const sourceElement = getElementById(association.source, structure);
+                if (sourceElement && sourceElement.type) {
+                    associatedActivities.push(sourceElement);
+                }
+            }
+        });
+        
+        // Si des activités sont associées, positionner l'objet par rapport à elles
+        if (associatedActivities.length > 0) {
+            const primaryActivity = associatedActivities[0];
+            description += ` à proximité de l'activité « ${primaryActivity.name} »`;
+        }
+        
+        description += `.\n\n`;
+        
+        // Décrire les associations
+        structure.associations.forEach(association => {
+            if (association.target === dataObject.id) {
+                const sourceElement = getElementById(association.source, structure);
+                if (sourceElement && sourceElement.type) {
+                    description += `Relier l'activité « ${sourceElement.name} » au ${objectType} « ${dataObject.name} » par une association`;
+                    
+                    if (association.direction) {
+                        if (association.direction === 'to-source') {
+                            description += ` orientée vers l'activité (lecture)`;
+                        } else if (association.direction === 'to-target') {
+                            description += ` orientée vers le ${objectType} (création)`;
+                        } else if (association.direction === 'both') {
+                            description += ` bidirectionnelle (mise à jour)`;
+                        }
+                    }
+                    
+                    description += `.\n\n`;
                 }
             }
         });
     });
     
-    return relations;
+    // Décrire les flux de message
+    description += "// Description des flux de message\n";
+    
+    structure.messageFlows.forEach(flow => {
+        const sourceElement = getElementById(flow.source, structure);
+        const targetElement = structure.swimlanes.find(lane => lane.id === flow.target);
+        
+        if (sourceElement && targetElement) {
+            description += `Tracer un flux de message « ${flow.name} » de l'activité « ${sourceElement.name} » vers la piscine « ${targetElement.name} ».\n\n`;
+        }
+    });
+    
+    return description;
 }
 
 /**
- * Remplit la liste des éléments pour la révision
+ * Infère le nom du processus
+ * @param {Object} structure - Structure du processus
+ * @return {string} - Nom du processus
+ */
+function inferProcessName(structure) {
+    // Essayer d'identifier le type de processus
+    
+    // Vérifier les activités clés
+    const activityNames = structure.activities.map(a => a.name.toLowerCase());
+    
+    if (activityNames.some(name => name.includes('command') && name.includes('client'))) {
+        return 'prise de commande';
+    }
+    
+    if (activityNames.some(name => name.includes('livr')) && 
+        activityNames.some(name => name.includes('prépar'))) {
+        return 'livraison';
+    }
+    
+    if (activityNames.some(name => name.includes('approu')) && 
+        activityNames.some(name => name.includes('rapport'))) {
+        return 'approbation des rapports';
+    }
+    
+    if (activityNames.some(name => name.includes('remboursement')) || 
+        activityNames.some(name => name.includes('dépense'))) {
+        return 'remboursement des dépenses';
+    }
+    
+    if (activityNames.some(name => name.includes('valid')) && 
+        activityNames.some(name => name.includes('crédit'))) {
+        return 'validation de crédit';
+    }
+    
+    // Vérifier les événements de fin
+    const endEventNames = structure.events
+        .filter(e => e.type === 'fin')
+        .map(e => e.name.toLowerCase());
+    
+    if (endEventNames.some(name => name.includes('livr'))) {
+        return 'livraison';
+    }
+    
+    if (endEventNames.some(name => name.includes('command'))) {
+        return 'traitement des commandes';
+    }
+    
+    // Par défaut
+    return 'traitement';
+}
+
+/**
+ * Infère l'acteur externe pour un événement
+ * @param {Object} event - Événement
+ * @param {Object} structure - Structure du processus
+ * @return {string} - Nom de l'acteur externe
+ */
+function inferExternalActorForEvent(event, structure) {
+    const lowerEventName = event.name.toLowerCase();
+    
+    // Rechercher par type d'événement
+    if (lowerEventName.includes('command')) {
+        const clientPool = structure.swimlanes.find(lane => 
+            lane.isExternalPool && lane.name.toLowerCase().includes('client')
+        );
+        return clientPool ? clientPool.name : null;
+    }
+    
+    if (lowerEventName.includes('facture') || lowerEventName.includes('paiement')) {
+        const fournisseurPool = structure.swimlanes.find(lane => 
+            lane.isExternalPool && lane.name.toLowerCase().includes('fournisseur')
+        );
+        return fournisseurPool ? fournisseurPool.name : null;
+    }
+    
+    // Acteur externe par défaut
+    const externalPools = structure.swimlanes.filter(lane => lane.isExternalPool);
+    return externalPools.length > 0 ? externalPools[0].name : null;
+}
+
+/**
+ * Récupère un élément par son ID
+ * @param {string} id - ID de l'élément
+ * @param {Object} structure - Structure du processus
+ * @return {Object} - Élément trouvé
+ */
+function getElementById(id, structure) {
+    if (id === 'start') {
+        return structure.events.find(event => event.type === 'début');
+    }
+    
+    if (id.startsWith('end')) {
+        return structure.events.find(event => event.id === id);
+    }
+    
+    if (id.startsWith('a')) {
+        return structure.activities.find(activity => activity.id === id);
+    }
+    
+    if (id.startsWith('g')) {
+        return structure.decisions.find(decision => decision.id === id);
+    }
+    
+    if (id.startsWith('d')) {
+        return structure.dataObjects.find(dataObject => dataObject.id === id);
+    }
+    
+    if (id.startsWith('e')) {
+        return structure.events.find(event => event.id === id);
+    }
+    
+    return null;
+}
+
+/**
+ * Obtient le type d'un élément
+ * @param {Object} element - Élément
+ * @return {string} - Type de l'élément
+ */
+function getElementType(element) {
+    if (!element) return '';
+    
+    if (element.type === 'début') {
+        return 'l\'événement de début';
+    }
+    
+    if (element.type === 'fin') {
+        return 'l\'événement de fin';
+    }
+    
+    if (element.type && ['générique', 'manuelle', 'utilisateur', 'service'].includes(element.type)) {
+        return `l'activité ${element.type}`;
+    }
+    
+    if (element.isConvergence) {
+        return 'la passerelle de convergence';
+    }
+    
+    if (element.condition) {
+        return 'la passerelle';
+    }
+    
+    return '';
+}
+
+/**
+ * Obtient la description d'un élément
+ * @param {Object} element - Élément
+ * @return {string} - Description de l'élément
+ */
+function getElementDescription(element) {
+    if (!element) return '';
+    
+    if (element.name) {
+        return element.name;
+    }
+    
+    if (element.question) {
+        return element.question;
+    }
+    
+    return '';
+}
+
+/**
+ * Crée la liste des éléments pour l'interface utilisateur
  * @param {Object} structure - Structure du processus
  */
 function populateElementList(structure) {
     const elementList = document.getElementById('element-list');
     elementList.innerHTML = '';
     
-    // Ajouter les activités à la liste
+    // Ajouter les acteurs
+    const actorsSection = document.createElement('div');
+    actorsSection.className = 'element-section';
+    actorsSection.innerHTML = '<h3>Acteurs</h3>';
+    
+    structure.actors.forEach(actor => {
+        const actorItem = document.createElement('div');
+        actorItem.className = 'element-item';
+        
+        const actorCheckbox = document.createElement('input');
+        actorCheckbox.type = 'checkbox';
+        actorCheckbox.id = `actor-${actor.name}`;
+        actorCheckbox.checked = actor.isInternal;
+        
+        const actorLabel = document.createElement('label');
+        actorLabel.htmlFor = `actor-${actor.name}`;
+        actorLabel.textContent = `${actor.name} ${actor.isInternal ? '(interne)' : '(externe)'}`;
+        
+        actorItem.appendChild(actorCheckbox);
+        actorItem.appendChild(actorLabel);
+        actorsSection.appendChild(actorItem);
+    });
+    
+    elementList.appendChild(actorsSection);
+    
+    // Ajouter les activités
+    const activitiesSection = document.createElement('div');
+    activitiesSection.className = 'element-section';
+    activitiesSection.innerHTML = '<h3>Activités</h3>';
+    
     structure.activities.forEach(activity => {
-        const elementItem = document.createElement('div');
-        elementItem.classList.add('element-item');
-        elementItem.innerHTML = `
-            <strong>${activity.name}</strong> (${activity.type})
-            <div class="position-selector">
-                <label>Position: 
-                    <select id="position-${activity.id}">
-                        <option value="top">En haut</option>
-                        <option value="right" selected>À droite</option>
-                        <option value="bottom">En bas</option>
-                        <option value="left">À gauche</option>
-                    </select>
-                </label>
-            </div>
-        `;
-        elementList.appendChild(elementItem);
+        const activityItem = document.createElement('div');
+        activityItem.className = 'element-item';
+        
+        const activitySelect = document.createElement('select');
+        activitySelect.id = `activity-type-${activity.id}`;
+        
+        const types = ['générique', 'manuelle', 'utilisateur', 'service'];
+        types.forEach(type => {
+            const option = document.createElement('option');
+            option.value = type;
+            option.textContent = type;
+            option.selected = activity.type === type;
+            activitySelect.appendChild(option);
+        });
+        
+        const activityLabel = document.createElement('label');
+        activityLabel.htmlFor = `activity-type-${activity.id}`;
+        activityLabel.textContent = activity.name;
+        
+        activityItem.appendChild(activitySelect);
+        activityItem.appendChild(activityLabel);
+        activitiesSection.appendChild(activityItem);
     });
     
-    // Ajouter les passerelles à la liste
-    structure.decisions.forEach(decision => {
-        const elementItem = document.createElement('div');
-        elementItem.classList.add('element-item');
-        elementItem.innerHTML = `
-            <strong>Passerelle: ${decision.question}</strong>
-            <div class="position-selector">
-                <label>Position: 
-                    <select id="position-${decision.id}">
-                        <option value="top">En haut</option>
-                        <option value="right" selected>À droite</option>
-                        <option value="bottom">En bas</option>
-                        <option value="left">À gauche</option>
-                    </select>
-                </label>
-            </div>
-        `;
-        elementList.appendChild(elementItem);
-    });
+    elementList.appendChild(activitiesSection);
     
-    // Ajouter les objets de données à la liste
-    structure.dataObjects.forEach(dataObject => {
-        const elementItem = document.createElement('div');
-        elementItem.classList.add('element-item');
-        elementItem.innerHTML = `
-            <strong>${dataObject.type === 'magasin' ? 'Magasin de données' : 'Objet de données'}: ${dataObject.name}</strong>
-            <div class="position-selector">
-                <label>Position: 
-                    <select id="position-${dataObject.id}">
-                        <option value="top">En haut</option>
-                        <option value="right">À droite</option>
-                        <option value="bottom" selected>En bas</option>
-                        <option value="left">À gauche</option>
-                    </select>
-                </label>
-            </div>
-        `;
-        elementList.appendChild(elementItem);
-    });
+    // Ajouter les décisions
+    if (structure.decisions.length > 0) {
+        const decisionsSection = document.createElement('div');
+        decisionsSection.className = 'element-section';
+        decisionsSection.innerHTML = '<h3>Décisions</h3>';
+        
+        structure.decisions.forEach(decision => {
+            if (!decision.isConvergence) {
+                const decisionItem = document.createElement('div');
+                decisionItem.className = 'element-item';
+                
+                const decisionInput = document.createElement('input');
+                decisionInput.type = 'text';
+                decisionInput.id = `decision-${decision.id}`;
+                decisionInput.value = decision.question;
+                
+                const decisionLabel = document.createElement('label');
+                decisionLabel.htmlFor = `decision-${decision.id}`;
+                decisionLabel.textContent = 'Question: ';
+                
+                decisionItem.appendChild(decisionLabel);
+                decisionItem.appendChild(decisionInput);
+                decisionsSection.appendChild(decisionItem);
+            }
+        });
+        
+        elementList.appendChild(decisionsSection);
+    }
+    
+    // Ajouter les objets de données
+    if (structure.dataObjects.length > 0) {
+        const dataSection = document.createElement('div');
+        dataSection.className = 'element-section';
+        dataSection.innerHTML = '<h3>Données</h3>';
+        
+        structure.dataObjects.forEach(dataObject => {
+            const dataItem = document.createElement('div');
+            dataItem.className = 'element-item';
+            
+            const dataTypeSelect = document.createElement('select');
+            dataTypeSelect.id = `data-type-${dataObject.id}`;
+            
+            const types = ['objet', 'magasin'];
+            types.forEach(type => {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type === 'objet' ? 'Objet de données' : 'Magasin de données';
+                option.selected = dataObject.type === type;
+                dataTypeSelect.appendChild(option);
+            });
+            
+            const dataLabel = document.createElement('label');
+            dataLabel.htmlFor = `data-type-${dataObject.id}`;
+            dataLabel.textContent = dataObject.name;
+            
+            dataItem.appendChild(dataTypeSelect);
+            dataItem.appendChild(dataLabel);
+            dataSection.appendChild(dataItem);
+        });
+        
+        elementList.appendChild(dataSection);
+    }
 }
 
 /**
@@ -2129,101 +2959,48 @@ function populateElementList(structure) {
  * @param {Object} structure - Structure du processus
  */
 function updateElementPositions(structure) {
-    // Mettre à jour les positions des activités
+    // Mettre à jour les types d'activités
     structure.activities.forEach(activity => {
-        const positionSelect = document.getElementById(`position-${activity.id}`);
-        if (positionSelect) {
-            activity.position = positionSelect.value;
+        const typeSelect = document.getElementById(`activity-type-${activity.id}`);
+        if (typeSelect) {
+            activity.type = typeSelect.value;
         }
     });
     
-    // Mettre à jour les positions des passerelles
+    // Mettre à jour les questions des décisions
     structure.decisions.forEach(decision => {
-        const positionSelect = document.getElementById(`position-${decision.id}`);
-        if (positionSelect) {
-            decision.position = positionSelect.value;
+        if (!decision.isConvergence) {
+            const questionInput = document.getElementById(`decision-${decision.id}`);
+            if (questionInput) {
+                decision.question = questionInput.value;
+            }
         }
     });
     
-    // Mettre à jour les positions des objets de données
+    // Mettre à jour les types d'objets de données
     structure.dataObjects.forEach(dataObject => {
-        const positionSelect = document.getElementById(`position-${dataObject.id}`);
-        if (positionSelect) {
-            dataObject.position = positionSelect.value;
+        const typeSelect = document.getElementById(`data-type-${dataObject.id}`);
+        if (typeSelect) {
+            dataObject.type = typeSelect.value;
+        }
+    });
+    
+    // Mettre à jour les acteurs internes/externes
+    structure.actors.forEach(actor => {
+        const checkbox = document.getElementById(`actor-${actor.name}`);
+        if (checkbox) {
+            actor.isInternal = checkbox.checked;
+            actor.requiresLane = actor.isInternal && (actor.hasActivities || actor.isPrimaryMention);
         }
     });
 }
 
 /**
- * Met la première lettre d'une chaîne en majuscule
+ * Capitalise la première lettre d'une chaîne
  * @param {string} string - Chaîne à capitaliser
- * @return {string} - Chaîne avec première lettre en majuscule
+ * @return {string} - Chaîne avec la première lettre capitalisée
  */
 function capitalizeFirstLetter(string) {
     if (!string) return '';
     return string.charAt(0).toUpperCase() + string.slice(1);
-}
-
-/**
- * Formate la description BPMN à partir de la structure du processus
- * @param {Object} processStructure - Structure analysée du processus
- * @return {string} - Description BPMN formatée
- */
-function formatBPMNDescription(processStructure) {
-    const { actors, activities, decisions, dataObjects, events } = processStructure;
-
-    let description = '';
-
-    // 1. Piscines et couloirs
-    const externalActors = actors.filter(a => !a.isInternal);
-    const internalActors = actors.filter(a => a.isInternal && a.requiresLane);
-
-    externalActors.forEach(actor => {
-        description += `Tracer une piscine pour l'acteur externe "${actor.name}".\n`;
-    });
-
-    if (internalActors.length > 0) {
-        description += `Tracer une piscine "Processus principal" dans laquelle on retrouve les couloirs suivants : ${internalActors.map(a => `"${a.name}"`).join(', ')}.\n`;
-    }
-
-    // 2. Événement de début
-    const startEvent = events.find(e => e.type === 'début');
-    if (startEvent) {
-        description += `Tracer un événement de début générique nommé "${startEvent.name}".\n`;
-    }
-
-    // 3. Activités et flux principaux
-    activities.forEach(activity => {
-        description += `Tracer une activité ${activity.type} "${activity.name}" dans le couloir "${activity.actor}".\n`;
-    });
-
-    // 4. Passerelles (décisions)
-    decisions.forEach(decision => {
-        description += `Tracer une passerelle exclusive avec la question "${decision.question}" dans le couloir "${decision.actor}".\n`;
-        if (decision.positiveOutcome) {
-            description += `Tracer un flux sortant nommé "Oui" menant à "${decision.positiveOutcome}".\n`;
-        }
-        if (decision.negativeOutcome) {
-            description += `Tracer un flux sortant nommé "Non" menant à "${decision.negativeOutcome}".\n`;
-        }
-    });
-
-    // 5. Données
-    dataObjects.forEach(data => {
-        const type = data.type === 'magasin' ? 'magasin de données' : 'objet de données';
-        description += `Tracer un ${type} nommé "${data.name}".\n`;
-    });
-
-    // 6. Événements intermédiaires
-    events.filter(e => e.type.startsWith('intermédiaire')).forEach(event => {
-        const eventType = event.type.includes('minuterie') ? 'de minuterie' : 'de message';
-        description += `Tracer un événement intermédiaire ${eventType} nommé "${event.name}".\n`;
-    });
-
-    // 7. Événements de fin
-    events.filter(e => e.type === 'fin').forEach(event => {
-        description += `Tracer un événement de fin nommé "${event.name}".\n`;
-    });
-
-    return description.trim();
 }
